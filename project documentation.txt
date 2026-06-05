@@ -1,0 +1,61 @@
+Project : Scissor Overview
+Scissor is a URL shortener with branded custom slugs, QR code generation, and click analytics — targeting the bit.ly and ow.ly market. Scissor should feel fast, minimal, and trust-inspiring. The core promise: paste a long URL, get a short one in under a second, with full analytics on who clicked it and where they came from.
+
+Recommended Stack
+Layer	Technology
+Frontend	React + TypeScript
+Backend / DB	Convex (reactive real-time database with type-safe mutations)
+Authentication	Clerk + Convex integration
+Slug generation	nanoid (collision-safe 6-character slugs)
+QR Codes	qrcode.react (SVG + PNG export, customizable colors)
+Redirects	Vercel Edge Functions or Convex HTTP Actions
+Analytics	Convex mutations + scheduled functions
+Charts	Recharts (clicks over time, device breakdown, referrers)
+Styling	Tailwind CSS
+Deployment	Vercel + Convex cloud
+Note: Why Convex: its reactive query model makes the analytics dashboard update instantly as clicks arrive — zero polling or websocket setup needed. Alternative: Supabase with Realtime.
+
+Core Requirements
+1. URL Shortening
+
+Paste a long URL → short link generated in under one second
+Generate a 6-character nanoid slug stored in Convex with uniqueness enforcement
+Redirect via a Vercel Edge Function (or Convex HTTP Action) at the short domain
+Handle 301 vs 302 redirect strategies explicitly: 302 preferred for analytics accuracy (avoids browser caching)
+URL validation: reject malformed URLs, block known phishing domains via blocklist
+2. Custom Slugs
+
+Users set a custom slug (e.g., /my-brand) with real-time uniqueness validation as they type
+Check slug availability via a Convex query on each keystroke with debouncing
+Reserved slugs list enforced server-side (e.g., api, dashboard, admin, login)
+Slug constraints: 3–50 characters, alphanumeric and hyphens only
+3. QR Code Generation
+
+Generate a downloadable QR code (SVG and PNG) for any shortened URL using qrcode.react
+Users can customize: foreground color, background color, error correction level, and logo overlay
+QR codes encode the short URL, not the original long URL
+Download button triggers client-side file save — no server round-trip
+4. Click Analytics
+
+Track each click: timestamp, HTTP referrer, country (from Cloudflare/Vercel request headers), and device type (UA parsing)
+All click events are stored as Convex documents and aggregated reactively
+Dashboard shows: clicks over time (line chart), top referrers (bar chart), device breakdown (pie), geographic map
+Analytics data is real-time — Convex reactive queries update the dashboard without page refresh
+5. Link Expiration & Rate Limiting
+
+Links can have an optional expiry date set at creation time
+Expired links return an HTTP 410 Gone response with a branded expiry page
+Expiry enforcement handled via Convex scheduled functions that flip a link’s ‘expired’ flag
+Anonymous users are rate-limited to 5 links per day using Convex’s mutation throttling
+6. Link Dashboard
+
+Table of all user’s links: short URL, original URL, click count, creation date, expiry, status
+One-click copy, delete, and QR code regenerate per link
+Search and filter across links by slug, status (active/expired), or date range
+Bulk delete with confirmation dialog
+Testing Requirements
+Test type	Min count	Coverage examples
+Unit tests	4+	Slug generation logic, collision detection, URL validation, expiry date calculation
+Component tests	3+	ShortenForm, QRCodeDisplay, AnalyticsDashboard
+E2E tests	5+	Shorten URL, custom slug collision, QR download, redirect works, link deletion
+Tools — Vitest for unit/component; Playwright for E2E; convex-test for mocking Convex queries
