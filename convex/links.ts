@@ -33,7 +33,6 @@ const PHISHING_BLOCKLIST = [
 const SLUG_ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 type LinkDoc = Doc<"links">;
-type LinkWithClickCount = LinkDoc & { clickCount: number };
 
 function isReservedSlug(slug: string): boolean {
   return RESERVED_SLUGS.has(slug.toLowerCase());
@@ -193,6 +192,7 @@ export const create = mutation({
       createdAt: Date.now(),
       expiresAt: args.expiresAt,
       status: "active",
+      clickCount: 0,
     });
 
     if (args.expiresAt) {
@@ -240,20 +240,7 @@ export const listUserLinks = query({
         .collect();
     }
 
-    const results: LinkWithClickCount[] = [];
-    for (const link of links) {
-      const clicks = await ctx.db
-        .query("clicks")
-        .withIndex("by_linkId", (q) => q.eq("linkId", link._id))
-        .collect();
-
-      results.push({
-        ...link,
-        clickCount: clicks.length,
-      });
-    }
-
-    return results;
+    return links.map((link) => ({ ...link, clickCount: link.clickCount ?? 0 }));
   },
 });
 

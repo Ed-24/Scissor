@@ -1,23 +1,12 @@
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { useAuthContext } from "../context/useAuthContext";
+import { useToast } from "../context/ToastContext";
 import QRCodeDisplay from "./QRCodeDisplay";
-import {
-  BarChart3,
-  Calendar,
-  Check,
-  Copy,
-  ExternalLink,
-  Filter,
-  QrCode,
-  Search,
-  ShieldAlert,
-  Trash,
-  Trash2,
-  X,
-} from "lucide-react";
+import { BarChart3, Calendar, Check, Copy, Filter, QrCode, Search, ShieldAlert, Trash, Trash2, X } from "lucide-react";
+import { formatShortDate, formatRelativeDate, truncate } from "../lib/format";
 
 interface DashboardProps {
   onSelectLink: (linkId: Id<"links">) => void;
@@ -25,62 +14,94 @@ interface DashboardProps {
 
 type LinkRow = Doc<"links"> & { clickCount: number };
 
+type StatusFilter = "all" | "active" | "expired";
+
 export default function Dashboard({ onSelectLink }: DashboardProps) {
-  const { anonymousId, isSignedIn } = useAuthContext();
+  const [now] = useState(() => Date.now());
+  const { isSignedIn } = useAuthContext();
+  const { toast } = useToast();
   const deleteLink = useMutation(api.links.deleteLink);
   const bulkDelete = useMutation(api.links.bulkDelete);
-  const links = useQuery(api.links.listUserLinks, isSignedIn ? {} : { anonymousClientId: anonymousId }) as
-    | LinkRow[]
-    | undefined;
+  const links = useQuery(api.links.listUserLinks, isSignedIn ? {} : "skip") as LinkRow[] | undefined;
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "expired">("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selectedIds, setSelectedIds] = useState<Id<"links">[]>([]);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [copiedId, setCopiedId] = useState<Id<"links"> | null>(null);
   const [expandedQrId, setExpandedQrId] = useState<Id<"links"> | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
 
-  if (links === undefined) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-slate-400 font-semibold">Loading links dashboard...</p>
-      </div>
-    );
-  }
+  const filteredLinks = useMemo(() => {
+    if (!links) {
+      return [];
+    }
 
-  const filteredLinks = links.filter((link) => {
-    const search = searchTerm.toLowerCase();
-    const matchesSearch = link.slug.toLowerCase().includes(search) || link.originalUrl.toLowerCase().includes(search);
-    const matchesStatus = statusFilter === "all" || link.status === statusFilter;
-    const linkTime = link.createdAt;
-    const matchesStart = !startDate ? true : linkTime >= new Date(startDate).getTime();
-    const matchesEnd = !endDate ? true : linkTime <= new Date(endDate).getTime() + 86_400_000;
+    const search = searchTerm.trim().toLowerCase();
+    const startTimestamp = startDate ? new Date(startDate).getTime() : null;
+    const endTimestamp = endDate ? new Date(`${endDate}T23:59:59.999`).getTime() : null;
 
-    return matchesSearch && matchesStatus && matchesStart && matchesEnd;
-  });
+    return links.filter((link) => {
+      const isExpired = link.status === "expired" || (link.expiresAt ? link.expiresAt <= now : false);
+      const normalizedStatus = isExpired ? "expired" : "active";
+      const matchesSearch = !search || link.slug.toLowerCase().includes(search) || link.originalUrl.toLowerCase().includes(search);
+      const matchesStatus = statusFilter === "all" || statusFilter === normalizedStatus;
+      const matchesStart = startTimestamp === null || link.createdAt >= startTimestamp;
+      const matchesEnd = endTimestamp === null || link.createdAt <= endTimestamp;
+
+      return matchesSearch && matchesStatus && matchesStart && matchesEnd;
+    });
+  }, [links, searchTerm, startDate, endDate, statusFilter]);
 
   const host = window.location.origin;
+  const totalClicks = filteredLinks.reduce((sum, link) => sum + (link.clickCount ?? 0), 0);
+  const activeLinks = filteredLinks.filter((link) => link.status !== "expired" && (!link.expiresAt || link.expiresAt > now)).length;
+  const expiredLinks = filteredLinks.length - activeLinks;
 
-  const handleCopy = (id: Id<"links">, shortUrl: string) => {
-    void navigator.clipboard.writeText(shortUrl);
-    setCopiedId(id);
-    window.setTimeout(() => setCopiedId(null), 2000);
+  const handleCopy = async (id: Id<"links">, shortUrl: string) => {
+    try {
+      await navigator.clipboard.writeText(shortUrl);
+      setCopiedId(id);
+      toast({
+        title: "Short link copied",
+        description: shortUrl,
+        variant: "success",
+      });
+      window.setTimeout(() => setCopiedId(null), 1500);
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Clipboard access was blocked by the browser.",
+        variant: "error",
+      });
+    }
   };
 
   const handleDelete = async (id: Id<"links">) => {
-    if (!confirm("Are you sure you want to delete this short link and all its click analytics?")) {
+    if (!window.confirm("Delete this short link and its analytics?")) {
       return;
     }
 
+    setIsBusy(true);
     try {
-      await deleteLink(isSignedIn ? { id } : { id, anonymousClientId: anonymousId });
-      setSelectedIds((previous) => previous.filter((linkId) => linkId !== id));
-      setExpandedQrId((previous) => (previous === id ? null : previous));
-    } catch {
-      alert("Failed to delete link");
+      await deleteLink({ id });
+      setSelectedIds((current) => current.filter((linkId) => linkId !== id));
+      setExpandedQrId((current) => (current === id ? null : current));
+      toast({
+        title: "Link deleted",
+        description: "Associated click records were removed too.",
+        variant: "success",
+      });
+    } catch (error) {
+      toast({
+        title: "Delete failed",
+        description: error instanceof Error ? error.message : "Unable to delete the link.",
+        variant: "error",
+      });
+    } finally {
+      setIsBusy(false);
     }
   };
 
@@ -89,335 +110,374 @@ export default function Dashboard({ onSelectLink }: DashboardProps) {
       return;
     }
 
+    setIsBusy(true);
     try {
-      await bulkDelete(isSignedIn ? { ids: selectedIds } : { ids: selectedIds, anonymousClientId: anonymousId });
+      await bulkDelete({ ids: selectedIds });
       setSelectedIds([]);
       setExpandedQrId(null);
       setShowConfirmModal(false);
-    } catch {
-      alert("Failed to bulk delete links");
+      toast({
+        title: "Links deleted",
+        description: `${selectedIds.length} link${selectedIds.length === 1 ? "" : "s"} removed.`,
+        variant: "success",
+      });
+    } catch (error) {
+      toast({
+        title: "Bulk delete failed",
+        description: error instanceof Error ? error.message : "Unable to delete selected links.",
+        variant: "error",
+      });
+    } finally {
+      setIsBusy(false);
     }
   };
 
   const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds(filteredLinks.map((link) => link._id));
-      return;
-    }
-
-    setSelectedIds([]);
+    setSelectedIds(checked ? filteredLinks.map((link) => link._id) : []);
   };
 
   const handleSelectRow = (id: Id<"links">, checked: boolean) => {
-    if (checked) {
-      setSelectedIds((previous) => [...previous, id]);
-      return;
-    }
-
-    setSelectedIds((previous) => previous.filter((linkId) => linkId !== id));
+    setSelectedIds((current) => (checked ? [...current, id] : current.filter((linkId) => linkId !== id)));
   };
 
-  const toggleQrExpand = (id: Id<"links">) => {
-    setExpandedQrId((previous) => (previous === id ? null : id));
-  };
+  if (links === undefined) {
+    return (
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-center px-4 py-16">
+        <div className="flex flex-col items-center gap-4 rounded-[2rem] border border-white/8 bg-white/5 px-8 py-10 text-center backdrop-blur-2xl">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
+          <p className="text-sm font-medium text-slate-300">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    return (
+      <div className="mx-auto flex w-full max-w-4xl items-center justify-center px-4 py-16">
+        <div className="rounded-[2rem] border border-white/8 bg-white/5 p-8 text-center backdrop-blur-2xl">
+          <h2 className="text-3xl font-display font-extrabold text-white">Sign in to view your dashboard</h2>
+          <p className="mt-3 text-sm leading-7 text-slate-400">
+            Your dashboard lives behind Clerk authentication so your links and analytics stay private.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="w-full max-w-6xl mx-auto py-10 px-4 flex flex-col gap-6" id="dashboard-container">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-extrabold font-display text-white">Links Dashboard</h2>
-          <p className="text-sm text-slate-400 mt-1">Manage, filter, and inspect click performance of your short links.</p>
-        </div>
+    <div id="dashboard-container" className="mx-auto w-full max-w-7xl px-4 py-10">
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 rounded-[2rem] border border-white/8 bg-white/5 p-6 backdrop-blur-2xl lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-soft-200">Dashboard</p>
+            <h2 className="mt-2 text-3xl font-display font-extrabold text-white">Manage links at a glance</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-400">
+              Search by slug or destination URL, filter by status and date, and inspect each short link without leaving the table.
+            </p>
+          </div>
 
-        {selectedIds.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setShowConfirmModal(true)}
-            className="px-5 py-2.5 bg-red-600/30 hover:bg-red-600/40 text-red-300 border border-red-500/40 rounded-xl text-sm font-bold flex items-center gap-2 transition active:scale-95 animate-[fadeIn_0.2s_ease]"
-            id="bulk-delete-btn"
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete Selected ({selectedIds.length})
-          </button>
-        )}
-      </div>
-
-      <div className="glass-card rounded-2xl p-5 border border-purple-500/10 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-        <div className="flex flex-col gap-1.5 md:col-span-2">
-          <label className="text-xs font-bold text-slate-400 flex items-center gap-1.5" htmlFor="search-input">
-            <Search className="w-3.5 h-3.5" />
-            Search Link
-          </label>
-          <input
-            type="text"
-            id="search-input"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by slug or destination URL..."
-            className="w-full px-4 py-2.5 rounded-xl glass-input text-slate-200 text-sm font-sans"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-bold text-slate-400 flex items-center gap-1.5" htmlFor="status-filter">
-            <Filter className="w-3.5 h-3.5" />
-            Status
-          </label>
-          <select
-            id="status-filter"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "expired")}
-            className="w-full px-4 py-2.5 rounded-xl glass-input text-slate-200 text-sm font-sans bg-[#0c0b10] cursor-pointer"
-          >
-            <option value="all">All Links</option>
-            <option value="active">Active Only</option>
-            <option value="expired">Expired Only</option>
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-bold text-slate-400 flex items-center gap-1.5" htmlFor="start-date-input">
-            <Calendar className="w-3.5 h-3.5" />
-            Date Created
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="date"
-              id="start-date-input"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-1/2 px-2.5 py-2.5 rounded-xl glass-input text-slate-200 text-xs font-sans"
-            />
-            <input
-              type="date"
-              id="end-date-input"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-1/2 px-2.5 py-2.5 rounded-xl glass-input text-slate-200 text-xs font-sans"
-            />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-white/8 bg-[#09080d] px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Links</p>
+              <p className="mt-2 text-2xl font-display font-bold text-white">{filteredLinks.length}</p>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-[#09080d] px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Clicks</p>
+              <p className="mt-2 text-2xl font-display font-bold text-white">{totalClicks}</p>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-[#09080d] px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Expired</p>
+              <p className="mt-2 text-2xl font-display font-bold text-white">{expiredLinks}</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {filteredLinks.length === 0 ? (
-        <div className="glass-card rounded-2xl p-16 text-center border border-purple-500/10">
-          <div className="w-12 h-12 text-slate-600 mx-auto">
-            <BarChart3 className="w-12 h-12" />
+        <div className="grid gap-4 rounded-[2rem] border border-white/8 bg-white/5 p-5 backdrop-blur-2xl lg:grid-cols-4">
+          <label className="space-y-2 lg:col-span-2">
+            <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+              <Search className="h-4 w-4" />
+              Search
+            </span>
+            <input
+              id="search-input"
+              type="text"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search by slug or original URL..."
+              className="w-full rounded-2xl border border-soft-500/15 bg-[#09080d] px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-primary-500/40"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+              <Filter className="h-4 w-4" />
+              Status
+            </span>
+            <select
+              id="status-filter"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+              className="w-full rounded-2xl border border-soft-500/15 bg-[#09080d] px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-primary-500/40"
+            >
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="expired">Expired</option>
+            </select>
+          </label>
+
+          <div className="space-y-2">
+            <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+              <Calendar className="h-4 w-4" />
+              Date range
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                id="start-date-input"
+                type="date"
+                value={startDate}
+                onChange={(event) => setStartDate(event.target.value)}
+                className="rounded-2xl border border-soft-500/15 bg-[#09080d] px-3 py-3 text-xs text-slate-100 outline-none transition focus:border-primary-500/40"
+              />
+              <input
+                id="end-date-input"
+                type="date"
+                value={endDate}
+                onChange={(event) => setEndDate(event.target.value)}
+                className="rounded-2xl border border-soft-500/15 bg-[#09080d] px-3 py-3 text-xs text-slate-100 outline-none transition focus:border-primary-500/40"
+              />
+            </div>
           </div>
-          <h3 className="text-xl font-bold font-display text-slate-300 mt-4">No short links found</h3>
-          <p className="text-sm text-slate-500 mt-1">Try relaxing your search terms or create your first short URL above.</p>
         </div>
-      ) : (
-        <div className="glass-card rounded-2xl border border-purple-500/10 overflow-hidden" id="links-table-container">
-          <div className="overflow-x-auto w-full">
-            <table className="w-full border-collapse text-left text-sm">
-              <thead className="bg-slate-950/60 border-b border-purple-500/10 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                <tr>
-                  <th className="p-4 w-10">
-                    <input
-                      type="checkbox"
-                      checked={filteredLinks.length > 0 && selectedIds.length === filteredLinks.length}
-                      onChange={(e) => handleSelectAll(e.target.checked)}
-                      className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-purple-600 focus:ring-purple-500 cursor-pointer"
-                      id="select-all-checkbox"
-                    />
-                  </th>
-                  <th className="p-4">Short link</th>
-                  <th className="p-4">Destination</th>
-                  <th className="p-4 text-center">Clicks</th>
-                  <th className="p-4">Created</th>
-                  <th className="p-4">Expires</th>
-                  <th className="p-4 text-center">Status</th>
-                  <th className="p-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/50">
-                {filteredLinks.map((link) => {
-                  const shortUrl = `${host}/s/${link.slug}`;
-                  const isSelected = selectedIds.includes(link._id);
-                  const isExpired = link.status === "expired";
 
-                  return (
-                    <Fragment key={link._id}>
-                      <tr className={`hover:bg-slate-900/30 transition-colors ${isSelected ? "bg-purple-950/10" : ""}`}>
-                        <td className="p-4">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => handleSelectRow(link._id, e.target.checked)}
-                            className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-purple-600 focus:ring-purple-500 cursor-pointer"
-                            data-testid={`select-${link.slug}`}
-                          />
-                        </td>
+        {selectedIds.length > 0 ? (
+          <div className="flex items-center justify-between rounded-2xl border border-soft-500/20 bg-primary-950/20 px-4 py-3">
+            <p className="text-sm text-light-200">
+              <span className="font-semibold">{selectedIds.length}</span> link{selectedIds.length === 1 ? "" : "s"} selected
+            </p>
+            <button
+              id="bulk-delete-btn"
+              type="button"
+              onClick={() => setShowConfirmModal(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-950/40 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-950/60"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete selected
+            </button>
+          </div>
+        ) : null}
 
-                        <td className="p-4 font-semibold font-mono text-slate-200">
-                          <div className="flex items-center gap-1.5">
-                            <span className="truncate max-w-[150px]">{link.slug}</span>
-                            <button
-                              onClick={() => handleCopy(link._id, shortUrl)}
-                              className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 transition"
-                              title="Copy URL"
-                              data-testid={`copy-${link.slug}`}
-                              type="button"
-                            >
-                              {copiedId === link._id ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
+        {filteredLinks.length === 0 ? (
+          <div className="rounded-[2rem] border border-white/8 bg-white/5 p-16 text-center backdrop-blur-2xl">
+            <BarChart3 className="mx-auto h-12 w-12 text-slate-600" />
+            <h3 className="mt-4 text-2xl font-display font-bold text-white">No short links found</h3>
+            <p className="mt-2 text-sm text-slate-500">Try a broader search or create your first branded link.</p>
+          </div>
+        ) : (
+          <div id="links-table-container" className="overflow-hidden rounded-[2rem] border border-white/8 bg-white/5 backdrop-blur-2xl">
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse text-left text-sm">
+                <thead className="bg-[#09080d] text-[10px] uppercase tracking-[0.22em] text-slate-400">
+                  <tr>
+                    <th className="w-12 p-4">
+                      <input
+                        id="select-all-checkbox"
+                        type="checkbox"
+                        checked={filteredLinks.length > 0 && selectedIds.length === filteredLinks.length}
+                        onChange={(event) => handleSelectAll(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-700 bg-[#050407] text-primary-500 focus:ring-primary-500"
+                      />
+                    </th>
+                    <th className="p-4">Short URL</th>
+                    <th className="p-4">Original URL</th>
+                    <th className="p-4 text-center">Clicks</th>
+                    <th className="p-4">Created</th>
+                    <th className="p-4">Expiry</th>
+                    <th className="p-4 text-center">Status</th>
+                    <th className="p-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/8">
+                  {filteredLinks.map((link) => {
+                    const shortUrl = `${host}/s/${link.slug}`;
+                    const isSelected = selectedIds.includes(link._id);
+                    const isExpired = link.status === "expired" || (link.expiresAt ? link.expiresAt <= now : false);
+
+                    return (
+                      <Fragment key={link._id}>
+                        <tr className={`transition hover:bg-white/5 ${isSelected ? "bg-primary-950/20" : ""}`}>
+                          <td className="p-4 align-top">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(event) => handleSelectRow(link._id, event.target.checked)}
+                              className="h-4 w-4 rounded border-slate-700 bg-[#050407] text-primary-500 focus:ring-primary-500"
+                              data-testid={`select-${link.slug}`}
+                            />
+                          </td>
+
+                          <td className="p-4 align-top">
+                            <div className="flex items-start gap-2">
+                              <div className="min-w-0">
+                                <a
+                                  href={shortUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="block truncate font-mono text-sm font-semibold text-light-200 transition hover:text-white"
+                                >
+                                  {shortUrl}
+                                </a>
+                                <p className="mt-1 text-xs text-slate-500">/{link.slug}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(link._id, shortUrl)}
+                                data-testid={`copy-${link.slug}`}
+                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-slate-100"
+                              >
+                                {copiedId === link._id ? <Check className="h-4 w-4 text-soft-200" /> : <Copy className="h-4 w-4" />}
+                              </button>
+                            </div>
+                          </td>
+
+                          <td className="p-4 align-top text-slate-300">
                             <a
-                              href={shortUrl}
+                              href={link.originalUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 transition"
-                              title="Visit Redirect Link"
+                              title={link.originalUrl}
+                              className="block max-w-[320px] truncate transition hover:text-light-200"
                             >
-                              <ExternalLink className="w-3.5 h-3.5" />
+                              {truncate(link.originalUrl, 64)}
                             </a>
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="p-4 max-w-[200px] truncate text-slate-400" title={link.originalUrl}>
-                          <a href={link.originalUrl} target="_blank" rel="noreferrer" className="hover:text-purple-400 hover:underline">
-                            {link.originalUrl}
-                          </a>
-                        </td>
-
-                        <td className="p-4 text-center font-bold font-mono">
-                          <span className="inline-block px-2.5 py-1 bg-slate-950/70 border border-slate-800 text-purple-300 rounded-lg text-xs">
-                            {link.clickCount}
-                          </span>
-                        </td>
-
-                        <td className="p-4 text-xs text-slate-400">
-                          {new Date(link.createdAt).toLocaleDateString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })}
-                        </td>
-
-                        <td className="p-4 text-xs text-slate-400">
-                          {link.expiresAt ? (
-                            <span className={isExpired ? "text-red-400 font-semibold" : ""}>
-                              {new Date(link.expiresAt).toLocaleDateString(undefined, {
-                                month: "short",
-                                day: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                          <td className="p-4 align-top text-center">
+                            <span className="inline-flex min-w-12 items-center justify-center rounded-full border border-soft-500/15 bg-[#09080d] px-3 py-1 font-mono text-xs font-semibold text-light-200">
+                              {link.clickCount}
                             </span>
-                          ) : (
-                            <span className="text-slate-600">Never</span>
-                          )}
-                        </td>
+                          </td>
 
-                        <td className="p-4 text-center">
-                          <span
-                            className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                              isExpired
-                                ? "bg-red-500/15 text-red-400 border border-red-500/20"
-                                : "bg-green-500/15 text-green-400 border border-green-500/20"
-                            }`}
-                          >
-                            {isExpired ? "Expired" : "Active"}
-                          </span>
-                        </td>
+                          <td className="p-4 align-top text-xs text-slate-400">{formatShortDate(link.createdAt)}</td>
 
-                        <td className="p-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => onSelectLink(link._id)}
-                              className="p-1.5 hover:bg-slate-800 rounded-lg text-purple-400 hover:text-purple-300 transition"
-                              title="View Click Analytics"
-                              data-testid={`analytics-${link.slug}`}
-                              type="button"
-                            >
-                              <BarChart3 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => toggleQrExpand(link._id)}
-                              className={`p-1.5 rounded-lg transition ${
-                                expandedQrId === link._id
-                                  ? "bg-purple-950/30 text-purple-300"
-                                  : "hover:bg-slate-800 text-blue-400 hover:text-blue-300"
+                          <td className="p-4 align-top text-xs text-slate-400">
+                            {link.expiresAt ? (
+                              <span className={isExpired ? "text-rose-300" : "text-slate-300"}>{formatRelativeDate(link.expiresAt)}</span>
+                            ) : (
+                              <span className="text-slate-600">Never</span>
+                            )}
+                          </td>
+
+                          <td className="p-4 align-top text-center">
+                            <span
+                              className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] ${
+                                isExpired ? "border-rose-500/20 bg-rose-500/10 text-rose-300" : "border-primary-500/20 bg-primary-500/10 text-soft-200"
                               }`}
-                              title="Generate QR Code"
-                              data-testid={`qr-toggle-${link.slug}`}
-                              type="button"
                             >
-                              <QrCode className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(link._id)}
-                              className="p-1.5 hover:bg-slate-800 rounded-lg text-red-400 hover:text-red-300 transition"
-                              title="Delete Link"
-                              data-testid={`delete-${link.slug}`}
-                              type="button"
-                            >
-                              <Trash className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                              {isExpired ? "Expired" : "Active"}
+                            </span>
+                          </td>
 
-                      {expandedQrId === link._id && (
-                        <tr>
-                          <td colSpan={8} className="p-4 bg-slate-950/20 border-b border-purple-500/10">
-                            <div className="animate-[slideDown_0.25s_ease-out]">
-                              <div className="flex justify-between items-center px-6 pt-2">
-                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                                  QR Code for short slug: <span className="font-mono text-purple-300">{link.slug}</span>
-                                </span>
-                                <button onClick={() => setExpandedQrId(null)} className="text-slate-500 hover:text-slate-300" type="button">
-                                  <X className="w-4 h-4" />
-                                </button>
-                              </div>
-                              <QRCodeDisplay shortUrl={shortUrl} slug={link.slug} />
+                          <td className="p-4 align-top">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => onSelectLink(link._id)}
+                                data-testid={`analytics-${link.slug}`}
+                                className="rounded-lg p-2 text-soft-200 transition hover:bg-white/10 hover:text-light-200"
+                                title="View analytics"
+                              >
+                                <BarChart3 className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setExpandedQrId((current) => (current === link._id ? null : link._id))}
+                                data-testid={`qr-toggle-${link.slug}`}
+                                className={`rounded-lg p-2 transition ${
+                                  expandedQrId === link._id ? "bg-primary-500/15 text-light-200" : "text-soft-200 hover:bg-white/10 hover:text-light-200"
+                                }`}
+                                title="Regenerate QR"
+                              >
+                                <QrCode className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(link._id)}
+                                data-testid={`delete-${link.slug}`}
+                                className="rounded-lg p-2 text-rose-300 transition hover:bg-white/10 hover:text-rose-200"
+                                title="Delete link"
+                                disabled={isBusy}
+                              >
+                                <Trash className="h-4 w-4" />
+                              </button>
                             </div>
                           </td>
                         </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
-      {showConfirmModal && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-[fadeIn_0.15s_ease-out]" id="bulk-delete-modal">
-          <div className="glass-card max-w-md w-full rounded-2xl p-6 border border-red-500/20 flex flex-col gap-5 text-center">
-            <div className="mx-auto p-3 bg-red-500/10 border border-red-500/30 rounded-full w-fit text-red-400">
-              <ShieldAlert className="w-8 h-8" />
+                        {expandedQrId === link._id ? (
+                          <tr>
+                            <td colSpan={8} className="border-t border-white/8 bg-[#09080d]/70 p-4">
+                              <div className="flex justify-between gap-4 pb-4">
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">QR code</p>
+                                  <p className="mt-1 text-sm text-slate-300">
+                                    Regenerate, recolor, or download the QR code for <span className="font-mono text-light-200">{link.slug}</span>.
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedQrId(null)}
+                                  className="rounded-lg p-2 text-slate-500 transition hover:bg-white/10 hover:text-slate-200"
+                                  aria-label="Close QR preview"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                              <QRCodeDisplay shortUrl={shortUrl} slug={link.slug} />
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-            <div>
-              <h3 className="text-xl font-bold font-display text-white">Bulk Delete Links</h3>
-              <p className="text-sm text-slate-400 mt-2">
-                Are you absolutely sure you want to delete <span className="font-bold text-red-400">{selectedIds.length}</span> short links and all of their
-                click analytics records? This action is permanent and cannot be undone.
-              </p>
+          </div>
+        )}
+      </div>
+
+      {showConfirmModal ? (
+        <div id="bulk-delete-modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
+          <div className="w-full max-w-md rounded-[2rem] border border-soft-500/20 bg-[#09080d] p-6 text-center shadow-2xl shadow-black/40">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-soft-500/20 bg-primary-500/10 text-light-200">
+              <ShieldAlert className="h-7 w-7" />
             </div>
-            <div className="flex gap-3 mt-2">
+            <h3 className="mt-4 text-2xl font-display font-extrabold text-white">Delete selected links?</h3>
+            <p className="mt-3 text-sm leading-7 text-slate-400">
+              This permanently removes the selected short links and their analytics records. The action cannot be undone.
+            </p>
+            <div className="mt-6 flex gap-3">
               <button
+                id="cancel-bulk-delete"
                 type="button"
                 onClick={() => setShowConfirmModal(false)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold rounded-xl transition"
-                id="cancel-bulk-delete"
+                className="flex-1 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
               >
                 Cancel
               </button>
               <button
+                id="confirm-bulk-delete"
                 type="button"
                 onClick={handleBulkDelete}
-                className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white text-sm font-semibold rounded-xl transition shadow-lg shadow-red-950/20"
-                id="confirm-bulk-delete"
+                className="flex-1 rounded-2xl bg-gradient-to-r from-primary-600 to-accent-500 px-4 py-3 text-sm font-semibold text-white transition hover:from-accent-500 hover:to-primary-500"
+                disabled={isBusy}
               >
-                Delete Permanently
+                Delete permanently
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

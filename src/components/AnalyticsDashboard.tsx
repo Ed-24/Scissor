@@ -1,23 +1,24 @@
+import { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { useAuthContext } from "../context/useAuthContext";
+import { ArrowLeft, Calendar, ExternalLink, Globe, Link2, Smartphone } from "lucide-react";
 import {
-  ResponsiveContainer,
-  LineChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
   Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  CartesianGrid,
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  Legend,
 } from "recharts";
-import { ArrowLeft, BarChart3, Calendar, ExternalLink, Globe, Link2, Smartphone } from "lucide-react";
 
 interface AnalyticsDashboardProps {
   linkId: Id<"links">;
@@ -48,286 +49,238 @@ interface CountryPoint {
 
 interface AnalyticsResponse {
   totalClicks: number;
+  uniqueClicks: number;
   clicksOverTime: ChartPoint[];
   referrers: CategoryPoint[];
   devices: DevicePoint[];
   countries: CountryPoint[];
 }
 
-interface TooltipContentProps {
-  active?: boolean;
-  payload?: Array<{ value?: number | string }>;
-  label?: string | number;
-}
-
-const COLORS = [
-  "hsl(262, 83%, 58%)",
-  "hsl(330, 90%, 60%)",
-  "hsl(190, 90%, 50%)",
-  "hsl(220, 90%, 60%)",
-  "hsl(150, 70%, 50%)",
-  "hsl(35, 90%, 55%)",
-];
+const COLORS = ["#215E68", "#297376", "#5C9396", "#C1D9DE", "#16484f", "#0b3137", "#013137"];
 
 const COUNTRY_NAMES: Record<string, string> = {
   US: "United States",
+  IN: "India",
   GB: "United Kingdom",
   CA: "Canada",
+  AU: "Australia",
   DE: "Germany",
   FR: "France",
-  IN: "India",
+  NL: "Netherlands",
+  SG: "Singapore",
   BR: "Brazil",
-  AU: "Australia",
-  JP: "Japan",
-  CN: "China",
 };
 
-function AnalyticsTooltip({ active, payload, label }: TooltipContentProps) {
+function TooltipCard({ active, payload, label }: { active?: boolean; payload?: Array<{ value?: number | string }>; label?: string | number }) {
   if (!active || !payload?.length) {
     return null;
   }
 
   return (
-    <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono shadow-xl">
-      <p className="text-slate-400 font-semibold">{label}</p>
-      <p className="text-purple-300 font-bold mt-1">Clicks: {Number(payload[0]?.value ?? 0)}</p>
+    <div className="rounded-2xl border border-white/8 bg-[#050407]/95 px-3 py-2 text-xs text-slate-100 shadow-2xl">
+      <p className="text-slate-400">{label}</p>
+      <p className="mt-1 font-semibold text-light-200">Clicks: {Number(payload[0]?.value ?? 0)}</p>
     </div>
   );
 }
 
 export default function AnalyticsDashboard({ linkId, onBack }: AnalyticsDashboardProps) {
-  const { anonymousId, isSignedIn } = useAuthContext();
-  const links = useQuery(api.links.listUserLinks, isSignedIn ? {} : { anonymousClientId: anonymousId }) as
-    | LinkRow[]
-    | undefined;
-  const analytics = useQuery(
-    api.clicks.getLinkAnalytics,
-    isSignedIn ? { linkId } : { linkId, anonymousClientId: anonymousId }
-  ) as AnalyticsResponse | undefined;
+  const { isSignedIn } = useAuthContext();
+  const links = useQuery(api.links.listUserLinks, isSignedIn ? {} : "skip") as LinkRow[] | undefined;
+  const analytics = useQuery(api.clicks.getLinkAnalytics, isSignedIn ? { linkId } : "skip") as AnalyticsResponse | undefined;
 
-  const selectedLink = links?.find((link) => link._id === linkId);
+  const selectedLink = useMemo(() => links?.find((link) => link._id === linkId), [links, linkId]);
   const shortUrl = selectedLink ? `${window.location.origin}/s/${selectedLink.slug}` : "";
 
-  if (analytics === undefined) {
+  if (!isSignedIn) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-slate-400 font-semibold">Loading real-time analytics...</p>
+      <div className="mx-auto flex w-full max-w-5xl items-center justify-center px-4 py-16">
+        <div className="rounded-[2rem] border border-white/8 bg-white/5 p-8 text-center backdrop-blur-2xl">
+          <h2 className="text-3xl font-display font-extrabold text-white">Sign in to view analytics</h2>
+          <p className="mt-3 text-sm leading-7 text-slate-400">
+            Analytics are private and only available to the signed-in owner of the short link.
+          </p>
+        </div>
       </div>
     );
   }
 
-  const { totalClicks, clicksOverTime, referrers, devices, countries } = analytics;
-
-  if (totalClicks === 0) {
+  if (analytics === undefined) {
     return (
-      <div className="w-full max-w-6xl mx-auto py-10 px-4 flex flex-col gap-6" id="analytics-container">
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-center px-4 py-16">
+        <div className="flex flex-col items-center gap-4 rounded-[2rem] border border-white/8 bg-white/5 px-8 py-10 text-center backdrop-blur-2xl">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
+          <p className="text-sm font-medium text-slate-300">Loading realtime analytics...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { totalClicks, uniqueClicks, clicksOverTime, referrers, devices, countries } = analytics;
+  const topCountry = countries[0];
+  const topReferrer = referrers[0];
+
+  return (
+    <div id="analytics-container" className="mx-auto w-full max-w-7xl px-4 py-10">
+      <div className="flex flex-col gap-6">
         <button
-          onClick={onBack}
-          className="w-fit flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition border border-slate-800 active:scale-95"
           id="back-to-links"
           type="button"
+          onClick={onBack}
+          className="inline-flex w-fit items-center gap-2 rounded-2xl border border-white/8 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10"
         >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Links
+          <ArrowLeft className="h-4 w-4" />
+          Back to links
         </button>
 
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-2">
+        <div className="rounded-[2rem] border border-white/8 bg-white/5 p-6 backdrop-blur-2xl">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h2 className="text-3xl font-extrabold font-display text-white flex items-center gap-2">
-                <BarChart3 className="w-8 h-8 text-purple-400" />
-                Click Performance Analytics
-              </h2>
-              {selectedLink && (
-                <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mt-2">
-                  <span className="font-semibold text-purple-300 font-mono select-all">{shortUrl}</span>
-                  <span className="text-slate-600">-&gt;</span>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-soft-200">Analytics</p>
+              <h2 className="mt-2 text-3xl font-display font-extrabold text-white">Realtime click performance</h2>
+              {selectedLink ? (
+                <div className="mt-3 flex flex-col gap-2 text-sm text-slate-400 sm:flex-row sm:items-center">
+                  <span className="font-mono text-light-200">{shortUrl}</span>
+                  <span className="hidden text-slate-600 sm:inline">→</span>
                   <a
                     href={selectedLink.originalUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="hover:text-white truncate max-w-[250px] inline-flex items-center gap-1 hover:underline"
+                    className="inline-flex max-w-full items-center gap-1 truncate transition hover:text-white"
+                    title={selectedLink.originalUrl}
                   >
                     {selectedLink.originalUrl}
-                    <ExternalLink className="w-3.5 h-3.5" />
+                    <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 </div>
-              )}
+              ) : null}
             </div>
 
-            <div className="p-4 bg-purple-950/20 border border-purple-500/20 rounded-2xl flex flex-col items-center justify-center min-w-[150px]">
-              <span className="text-xs font-bold text-purple-300 uppercase tracking-widest">Total Clicks</span>
-              <span className="text-4xl font-extrabold font-mono text-white mt-1" id="total-clicks-count">
-                {totalClicks}
-              </span>
-            </div>
-          </div>
-
-          <div className="glass-card rounded-2xl p-16 text-center border border-purple-500/10">
-            <Globe className="w-12 h-12 text-slate-600 mx-auto animate-pulse" />
-            <h3 className="text-xl font-bold font-display text-slate-300 mt-4">No click data yet</h3>
-            <p className="text-sm text-slate-500 mt-1">
-              This link has not been clicked yet. Share your short link to start logging visitor analytics.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full max-w-6xl mx-auto py-10 px-4 flex flex-col gap-6" id="analytics-container">
-      <div className="flex flex-col gap-4">
-        <button
-          onClick={onBack}
-          className="w-fit flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition border border-slate-800 active:scale-95"
-          id="back-to-links"
-          type="button"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Links
-        </button>
-
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-2">
-          <div>
-            <h2 className="text-3xl font-extrabold font-display text-white flex items-center gap-2">
-              <BarChart3 className="w-8 h-8 text-purple-400" />
-              Click Performance Analytics
-            </h2>
-            {selectedLink && (
-              <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mt-2">
-                <span className="font-semibold text-purple-300 font-mono select-all">{shortUrl}</span>
-                <span className="text-slate-600">-&gt;</span>
-                <a
-                  href={selectedLink.originalUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hover:text-white truncate max-w-[250px] inline-flex items-center gap-1 hover:underline"
-                >
-                  {selectedLink.originalUrl}
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/8 bg-[#09080d] px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Total clicks</p>
+                <p id="total-clicks-count" className="mt-2 text-3xl font-display font-bold text-white">
+                  {totalClicks}
+                </p>
               </div>
-            )}
-          </div>
-
-          <div className="p-4 bg-purple-950/20 border border-purple-500/20 rounded-2xl flex flex-col items-center justify-center min-w-[150px]">
-            <span className="text-xs font-bold text-purple-300 uppercase tracking-widest">Total Clicks</span>
-            <span className="text-4xl font-extrabold font-mono text-white mt-1" id="total-clicks-count">
-              {totalClicks}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6" id="analytics-grid">
-        <div className="glass-card rounded-2xl p-5 border border-purple-500/10 flex flex-col gap-4">
-          <h3 className="text-sm font-extrabold font-display text-slate-300 uppercase tracking-wider flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-purple-400" />
-            Clicks Over Time
-          </h3>
-          <div className="h-[250px] w-full" id="clicks-over-time-chart">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={clicksOverTime} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} />
-                <YAxis stroke="#64748b" fontSize={10} tickLine={false} allowDecimals={false} />
-                <Tooltip content={<AnalyticsTooltip />} />
-                <Line
-                  type="monotone"
-                  dataKey="count"
-                  stroke="var(--color-brand-500)"
-                  strokeWidth={3}
-                  dot={{ fill: "var(--color-brand-500)", strokeWidth: 1 }}
-                  activeDot={{ r: 6 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+              <div className="rounded-2xl border border-white/8 bg-[#09080d] px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Unique clicks</p>
+                <p id="unique-clicks-count" className="mt-2 text-3xl font-display font-bold text-white">
+                  {uniqueClicks}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/8 bg-[#09080d] px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Top country</p>
+                <p className="mt-2 text-lg font-semibold text-white">{topCountry ? COUNTRY_NAMES[topCountry.country.toUpperCase()] ?? topCountry.country.toUpperCase() : "N/A"}</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="glass-card rounded-2xl p-5 border border-purple-500/10 flex flex-col gap-4">
-          <h3 className="text-sm font-extrabold font-display text-slate-300 uppercase tracking-wider flex items-center gap-2">
-            <Link2 className="w-4 h-4 text-purple-400" />
-            Referrals Breakdown
-          </h3>
-          <div className="h-[250px] w-full" id="referrers-chart">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={referrers} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="referrer" stroke="#64748b" fontSize={10} tickLine={false} />
-                <YAxis stroke="#64748b" fontSize={10} tickLine={false} allowDecimals={false} />
-                <Tooltip content={<AnalyticsTooltip />} />
-                <Bar dataKey="count" fill="var(--color-brand-500)" radius={[4, 4, 0, 0]}>
-                  {referrers.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <section className="rounded-[2rem] border border-white/8 bg-white/5 p-5 backdrop-blur-2xl">
+            <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">
+              <Calendar className="h-4 w-4 text-soft-200" />
+              Clicks over time
+            </h3>
+            <div className="mt-4 h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={clicksOverTime} margin={{ top: 10, right: 8, bottom: 0, left: -20 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
+                  <XAxis dataKey="date" stroke="#64748b" tickLine={false} fontSize={11} />
+                  <YAxis stroke="#64748b" tickLine={false} allowDecimals={false} fontSize={11} />
+                  <Tooltip content={<TooltipCard />} />
+                  <Line type="monotone" dataKey="count" stroke="#215E68" strokeWidth={3} dot={{ r: 4, fill: "#297376" }} activeDot={{ r: 6 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
 
-        <div className="glass-card rounded-2xl p-5 border border-purple-500/10 flex flex-col gap-4">
-          <h3 className="text-sm font-extrabold font-display text-slate-300 uppercase tracking-wider flex items-center gap-2">
-            <Smartphone className="w-4 h-4 text-purple-400" />
-            Devices & User Agents
-          </h3>
-          <div className="h-[250px] w-full flex items-center justify-center" id="devices-chart">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={devices}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="count"
-                  nameKey="device"
-                >
-                  {devices.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: 11 }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+          <section className="rounded-[2rem] border border-white/8 bg-white/5 p-5 backdrop-blur-2xl">
+            <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">
+              <Link2 className="h-4 w-4 text-soft-200" />
+              Top referrers
+            </h3>
+            <div className="mt-4 h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={referrers} margin={{ top: 10, right: 8, bottom: 0, left: -10 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
+                  <XAxis dataKey="referrer" stroke="#64748b" tickLine={false} fontSize={11} />
+                  <YAxis stroke="#64748b" tickLine={false} allowDecimals={false} fontSize={11} />
+                  <Tooltip content={<TooltipCard />} />
+                  <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                    {referrers.map((entry, index) => (
+                      <Cell key={entry.referrer} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
 
-        <div className="glass-card rounded-2xl p-5 border border-purple-500/10 flex flex-col gap-4">
-          <h3 className="text-sm font-extrabold font-display text-slate-300 uppercase tracking-wider flex items-center gap-2">
-            <Globe className="w-4 h-4 text-purple-400" />
-            Geographic Location
-          </h3>
-          <div className="flex flex-col gap-4 overflow-y-auto max-h-[250px] pr-2 scroll-custom" id="countries-list">
-            {countries.map((item) => {
-              const percentage = Math.round((item.count / totalClicks) * 100);
-              const countryName = COUNTRY_NAMES[item.country.toUpperCase()] ?? item.country.toUpperCase();
+          <section className="rounded-[2rem] border border-white/8 bg-white/5 p-5 backdrop-blur-2xl">
+            <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">
+              <Smartphone className="h-4 w-4 text-soft-200" />
+              Device breakdown
+            </h3>
+            <div className="mt-4 h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={devices} dataKey="count" nameKey="device" cx="50%" cy="50%" outerRadius={92} labelLine={false}>
+                    {devices.map((entry, index) => (
+                      <Cell key={entry.device} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
 
-              return (
-                <div key={item.country} className="flex flex-col gap-1.5" data-testid={`country-${item.country}`}>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-200 flex items-center gap-2">
-                      <span className="text-base uppercase tracking-wider text-slate-500">{item.country}</span>
-                      {countryName}
-                    </span>
-                    <span className="font-bold text-slate-300 font-mono">
-                      {item.count} click{item.count > 1 ? "s" : ""} ({percentage}%)
-                    </span>
+          <section className="rounded-[2rem] border border-white/8 bg-white/5 p-5 backdrop-blur-2xl">
+            <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">
+              <Globe className="h-4 w-4 text-soft-200" />
+              Geographic summary
+            </h3>
+            <div id="countries-list" className="mt-4 space-y-4">
+              {countries.map((country) => {
+                const percentage = Math.max(0, Math.round((country.count / totalClicks) * 100));
+                const countryName = COUNTRY_NAMES[country.country.toUpperCase()] ?? country.country.toUpperCase();
+                return (
+                  <div key={country.country} data-testid={`country-${country.country}`} className="space-y-2">
+                    <div className="flex items-center justify-between gap-4 text-sm">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-white">
+                          <span className="font-mono text-slate-500">{country.country.toUpperCase()}</span> {countryName}
+                        </p>
+                      </div>
+                      <p className="font-mono text-slate-300">
+                        {country.count} click{country.count === 1 ? "" : "s"} ({percentage}%)
+                      </p>
+                    </div>
+                    <div className="h-2 rounded-full border border-white/8 bg-[#09080d]">
+                      <div className="h-full rounded-full bg-gradient-to-r from-primary-600 to-accent-500" style={{ width: `${percentage}%` }} />
+                    </div>
                   </div>
-                  <div className="w-full bg-slate-900 border border-slate-800 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full"
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+          </section>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-[1.5rem] border border-white/8 bg-white/5 p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Total clicks</p>
+            <p className="mt-2 text-2xl font-display font-bold text-white">{totalClicks}</p>
+          </div>
+          <div className="rounded-[1.5rem] border border-white/8 bg-white/5 p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Unique clicks</p>
+            <p className="mt-2 text-2xl font-display font-bold text-white">{uniqueClicks}</p>
+          </div>
+          <div className="rounded-[1.5rem] border border-white/8 bg-white/5 p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Top referrer</p>
+            <p className="mt-2 text-2xl font-display font-bold text-white">{topReferrer ? topReferrer.referrer : "N/A"}</p>
           </div>
         </div>
       </div>

@@ -1,112 +1,93 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Id } from "../../convex/_generated/dataModel";
 import AnalyticsDashboard from "./AnalyticsDashboard";
+import Dashboard from "./Dashboard";
 import QRCodeDisplay from "./QRCodeDisplay";
 import ShortenForm from "./ShortenForm";
 
-// 1. Mock the Auth Context
+const toastMock = vi.fn();
+const mutationMock = vi.fn(async (args: any) => {
+  if (args && typeof args === "object" && "customSlug" in args) {
+    return { slug: args.customSlug || "abc123" };
+  }
+  return null;
+});
+
+const mockLinks = [
+  {
+    _id: "mock-link-id-1",
+    slug: "abc123",
+    originalUrl: "https://google.com/search?q=scissor",
+    createdAt: Date.now() - 86_400_000,
+    expiresAt: Date.now() + 86_400_000,
+    status: "active",
+    clickCount: 12,
+  },
+  {
+    _id: "mock-link-id-2",
+    slug: "old-link",
+    originalUrl: "https://microsoft.com",
+    createdAt: Date.now() - 172_800_000,
+    expiresAt: Date.now() - 1_000,
+    status: "expired",
+    clickCount: 3,
+  },
+];
+
+const getUdfPath = (apiFunc: any) => String(apiFunc?._toApiString || apiFunc?.name || "");
+
 vi.mock("../context/useAuthContext", () => ({
   useAuthContext: () => ({
-    isSignedIn: false,
-    user: null,
-    anonymousId: "test-anon-id",
+    isLoaded: true,
+    isSignedIn: true,
+    isMock: false,
+    user: {
+      id: "user_1",
+      fullName: "Edith",
+      primaryEmailAddress: "edith@example.com",
+      imageUrl: null,
+    },
     signOut: vi.fn(),
-    signInMock: vi.fn(),
-    isMock: true,
+    openSignIn: vi.fn(),
+    openSignUp: vi.fn(),
   }),
 }));
 
-// Helper to extract function path from Convex UDF reference
-const getUdfPath = (apiFunc: any) => {
-  if (apiFunc && (typeof apiFunc === "object" || typeof apiFunc === "function")) {
-    return String(apiFunc._toApiString || apiFunc.name || "");
-  }
-  return String(apiFunc || "");
-};
+vi.mock("../context/ToastContext", () => ({
+  useToast: () => ({
+    toasts: [],
+    toast: toastMock,
+    dismissToast: vi.fn(),
+  }),
+}));
 
-const mockMutation = vi.fn().mockResolvedValue({ slug: "abc123" });
-const mockQuery = vi.fn((apiFunc: any, args?: any) => {
-  const path = getUdfPath(apiFunc);
-
-  if (path.includes("checkSlugAvailable")) {
-    return args?.slug === "my-brand";
-  }
-
-  if (path.includes("listUserLinks")) {
-    return [
-      {
-        _id: "mock-link-id",
-        slug: "abc123",
-        originalUrl: "https://google.com",
-        createdAt: Date.now(),
-        status: "active",
-        clickCount: 12,
-      },
-    ];
-  }
-
-  if (path.includes("getLinkAnalytics")) {
-    return {
-      totalClicks: 25,
-      clicksOverTime: [{ date: "2026-06-05", count: 25 }],
-      referrers: [
-        { referrer: "Twitter", count: 15 },
-        { referrer: "Google", count: 10 },
-      ],
-      devices: [
-        { device: "Mobile", count: 20 },
-        { device: "Desktop", count: 5 },
-      ],
-      countries: [
-        { country: "US", count: 18 },
-        { country: "IN", count: 7 },
-      ],
-    };
-  }
-
-  return undefined;
-});
-
-// Mock convex/react synchronously to maintain closure references
 vi.mock("convex/react", () => ({
+  ConvexProvider: ({ children }: any) => children,
   ConvexReactClient: class {
     constructor() {}
   },
-  ConvexProvider: ({ children }: any) => children,
-  useMutation: () => mockMutation,
-  useQuery: (apiFunc: unknown, args?: any) => mockQuery(apiFunc, args),
-}));
-
-beforeEach(() => {
-  vi.restoreAllMocks();
-  window.URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-url");
-  window.URL.revokeObjectURL = vi.fn();
-
-  mockQuery.mockClear();
-  mockQuery.mockImplementation((apiFunc: any, args?: any) => {
+  useMutation: () => mutationMock,
+  useQuery: (apiFunc: unknown, args?: any) => {
     const path = getUdfPath(apiFunc);
+
     if (path.includes("checkSlugAvailable")) {
-      return args?.slug === "my-brand";
+      return args?.slug === "taken-slug" ? false : true;
     }
 
     if (path.includes("listUserLinks")) {
-      return [
-        {
-          _id: "mock-link-id",
-          slug: "abc123",
-          originalUrl: "https://google.com",
-          createdAt: Date.now(),
-          status: "active",
-          clickCount: 12,
-        },
-      ];
+      return mockLinks;
     }
 
     if (path.includes("getLinkAnalytics")) {
       return {
         totalClicks: 25,
-        clicksOverTime: [{ date: "2026-06-05", count: 25 }],
+        uniqueClicks: 19,
+        clicksOverTime: [
+          { date: "2026-06-01", count: 3 },
+          { date: "2026-06-02", count: 5 },
+          { date: "2026-06-03", count: 17 },
+        ],
         referrers: [
           { referrer: "Twitter", count: 15 },
           { referrer: "Google", count: 10 },
@@ -123,6 +104,18 @@ beforeEach(() => {
     }
 
     return undefined;
+  },
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  window.URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-url");
+  window.URL.revokeObjectURL = vi.fn();
+  mutationMock.mockImplementation(async (args: any) => {
+    if (args && typeof args === "object" && "customSlug" in args) {
+      return { slug: args.customSlug || "abc123" };
+    }
+    return null;
   });
 });
 
@@ -138,8 +131,9 @@ describe("Scissor Frontend - Component Tests", () => {
     test("shows validation error for malformed URLs", async () => {
       render(<ShortenForm />);
 
-      const urlInput = screen.getByPlaceholderText(/very\/long\/path/i);
-      fireEvent.change(urlInput, { target: { value: "not-a-valid-url" } });
+      fireEvent.change(screen.getByPlaceholderText(/very\/long\/path/i), { target: { value: "not-a-valid-url" } });
+
+      fireEvent.click(screen.getByRole("button", { name: /Get Shortened Link/i }));
 
       await waitFor(() => {
         expect(screen.getByText(/Please enter a fully qualified URL/i)).toBeInTheDocument();
@@ -149,30 +143,41 @@ describe("Scissor Frontend - Component Tests", () => {
     test("shows validation error for phishing domains", async () => {
       render(<ShortenForm />);
 
-      const urlInput = screen.getByPlaceholderText(/very\/long\/path/i);
-      fireEvent.change(urlInput, { target: { value: "https://phishing.com" } });
+      fireEvent.change(screen.getByPlaceholderText(/very\/long\/path/i), { target: { value: "https://phishing.com" } });
+
+      fireEvent.click(screen.getByRole("button", { name: /Get Shortened Link/i }));
 
       await waitFor(() => {
-        expect(screen.getByText(/flagged as a phishing hazard/i)).toBeInTheDocument();
+        expect(screen.getByText(/blocked by Scissor's phishing protection/i)).toBeInTheDocument();
       });
     });
 
     test("toggles custom slug and checks availability", async () => {
       render(<ShortenForm />);
 
-      const slugCheckbox = screen.getByLabelText(/Configure Branded Custom Slug/i);
-      fireEvent.click(slugCheckbox);
-
-      const slugInput = screen.getByPlaceholderText("my-custom-slug");
-      expect(slugInput).toBeInTheDocument();
-
+      fireEvent.click(screen.getByLabelText(/Add a custom slug/i));
+      const slugInput = screen.getByPlaceholderText("my-brand");
       fireEvent.change(slugInput, { target: { value: "my-brand" } });
 
-      await new Promise((resolve) => setTimeout(resolve, 400));
-
       await waitFor(() => {
-        expect(screen.getByText(/available/i)).toBeInTheDocument();
+        expect(screen.getByText(/Available/i)).toBeInTheDocument();
       });
+    });
+  });
+
+  describe("Dashboard", () => {
+    test("renders links table and supports row actions", async () => {
+      render(<Dashboard onSelectLink={vi.fn()} />);
+
+      expect(await screen.findByText(/Manage links at a glance/i)).toBeInTheDocument();
+      expect(screen.getByText(/google.com\/search/i)).toBeInTheDocument();
+      expect(screen.getByText(/microsoft.com/i)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("select-abc123"));
+      expect(screen.getByRole("button", { name: /Delete selected/i })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("qr-toggle-abc123"));
+      expect(screen.getByText(/Customize and download/i)).toBeInTheDocument();
     });
   });
 
@@ -180,9 +185,9 @@ describe("Scissor Frontend - Component Tests", () => {
     test("renders QR display and customization controls", () => {
       render(<QRCodeDisplay shortUrl="https://scissor.dev/s/abc123" slug="abc123" />);
 
-      expect(screen.getByText("Customize QR Code")).toBeInTheDocument();
-      expect(screen.getByLabelText(/Foreground Color/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Background Color/i)).toBeInTheDocument();
+      expect(screen.getByText("Customize and download")).toBeInTheDocument();
+      expect(screen.getByLabelText(/Foreground/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Background/i)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Download PNG/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Download SVG/i })).toBeInTheDocument();
     });
@@ -190,11 +195,11 @@ describe("Scissor Frontend - Component Tests", () => {
     test("updates colors when picked", () => {
       render(<QRCodeDisplay shortUrl="https://scissor.dev/s/abc123" slug="abc123" />);
 
-      const fgInput = screen.getByLabelText(/Foreground Color/i) as HTMLInputElement;
+      const fgInput = screen.getByLabelText(/Foreground/i) as HTMLInputElement;
       fireEvent.change(fgInput, { target: { value: "#ff0000" } });
       expect(fgInput.value).toBe("#ff0000");
 
-      const bgInput = screen.getByLabelText(/Background Color/i) as HTMLInputElement;
+      const bgInput = screen.getByLabelText(/Background/i) as HTMLInputElement;
       fireEvent.change(bgInput, { target: { value: "#000000" } });
       expect(bgInput.value).toBe("#000000");
     });
@@ -202,13 +207,13 @@ describe("Scissor Frontend - Component Tests", () => {
 
   describe("AnalyticsDashboard", () => {
     test("renders click metrics and geographic data when clicked", () => {
-      render(<AnalyticsDashboard linkId={"mock-link-id" as Id<"links">} onBack={() => {}} />);
+      render(<AnalyticsDashboard linkId={"mock-link-id-1" as Id<"links">} onBack={() => {}} />);
 
-      expect(screen.getByText("Click Performance Analytics")).toBeInTheDocument();
-      expect(screen.getByText("Total Clicks")).toBeInTheDocument();
-      expect(screen.getByText("25")).toBeInTheDocument();
-      expect(screen.getByText("United States")).toBeInTheDocument();
-      expect(screen.getByText("India")).toBeInTheDocument();
+      expect(screen.getByText("Realtime click performance")).toBeInTheDocument();
+      expect(screen.getByText("25", { selector: "#total-clicks-count" })).toBeInTheDocument();
+      expect(screen.getByText("19", { selector: "#unique-clicks-count" })).toBeInTheDocument();
+      expect(within(screen.getByTestId("country-US")).getByText("United States")).toBeInTheDocument();
+      expect(within(screen.getByTestId("country-IN")).getByText("India")).toBeInTheDocument();
       expect(screen.getByText(/18 clicks/i)).toBeInTheDocument();
       expect(screen.getByText(/7 clicks/i)).toBeInTheDocument();
     });

@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { AlertCircle, Calendar, Check, Copy, Link2, RefreshCw, Sparkles } from "lucide-react";
 import { api } from "../../convex/_generated/api";
+import { useToast } from "../context/ToastContext";
 import { useAuthContext } from "../context/useAuthContext";
 import QRCodeDisplay from "./QRCodeDisplay";
-import { AlertCircle, Calendar, Check, Copy, Link2, RefreshCw, Sparkles } from "lucide-react";
 
 const PHISHING_BLOCKLIST = [
   "phishing.com",
@@ -13,342 +14,393 @@ const PHISHING_BLOCKLIST = [
   "steal-creds.org",
 ];
 
-function checkUrlValidity(urlString: string): { isValid: boolean; error?: string } {
-  const normalizedUrl = urlString.trim();
-  if (!normalizedUrl) {
-    return { isValid: false, error: "Please enter a fully qualified URL (e.g., https://example.com)." };
+function validateUrl(input: string): { valid: boolean; message?: string } {
+  const value = input.trim();
+  if (!value) {
+    return { valid: false, message: "Please enter a fully qualified URL such as https://example.com." };
   }
 
   try {
-    const url = new URL(normalizedUrl);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return { isValid: false, error: "Only HTTP and HTTPS URLs are supported." };
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { valid: false, message: "Only HTTP and HTTPS destinations are supported." };
     }
 
-    const hostname = url.hostname.toLowerCase();
-    for (const blocked of PHISHING_BLOCKLIST) {
-      if (hostname === blocked || hostname.endsWith(`.${blocked}`)) {
-        return { isValid: false, error: "This URL has been flagged as a phishing hazard." };
-      }
+    const hostname = parsed.hostname.toLowerCase();
+    if (PHISHING_BLOCKLIST.some((blocked) => hostname === blocked || hostname.endsWith(`.${blocked}`))) {
+      return { valid: false, message: "This destination is blocked by Scissor's phishing protection." };
     }
 
-    return { isValid: true };
+    return { valid: true };
   } catch {
-    return { isValid: false, error: "Please enter a fully qualified URL (e.g., https://example.com)." };
+    return { valid: false, message: "Please enter a fully qualified URL such as https://example.com." };
   }
 }
 
 export default function ShortenForm() {
-  const { anonymousId, isSignedIn } = useAuthContext();
+  const { isSignedIn, openSignIn } = useAuthContext();
+  const { toast } = useToast();
   const createShortLink = useMutation(api.links.create);
 
   const [originalUrl, setOriginalUrl] = useState("");
   const [useCustomSlug, setUseCustomSlug] = useState(false);
   const [customSlug, setCustomSlug] = useState("");
-  const [debouncedSlug, setDebouncedSlug] = useState("");
   const [useExpiry, setUseExpiry] = useState(false);
   const [expiresAt, setExpiresAt] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successData, setSuccessData] = useState<{ shortUrl: string; slug: string } | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+  const [debouncedSlug, setDebouncedSlug] = useState("");
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedSlug(customSlug.trim());
-    }, 300);
-
+    const timer = window.setTimeout(() => setDebouncedSlug(customSlug.trim()), 280);
     return () => window.clearTimeout(timer);
   }, [customSlug]);
 
-  const hasUrl = originalUrl.trim().length > 0;
-  const urlValidation = checkUrlValidity(originalUrl);
-  const urlValidationError = hasUrl && !urlValidation.isValid ? urlValidation.error ?? null : null;
+  const originalValidation = validateUrl(originalUrl);
+  const showUrlError = originalUrl.trim().length > 0 && !originalValidation.valid ? originalValidation.message ?? null : null;
+  const slugPattern = /^[a-zA-Z0-9-]+$/;
+  const slugLengthOk = debouncedSlug.length >= 3 && debouncedSlug.length <= 50;
+  const slugCharsOk = !debouncedSlug || slugPattern.test(debouncedSlug);
+  const shouldCheckSlug = isSignedIn && useCustomSlug && slugLengthOk && slugCharsOk;
+  const slugAvailable = useQuery(api.links.checkSlugAvailable, shouldCheckSlug ? { slug: debouncedSlug } : "skip");
 
-  const isSlugLengthOk = debouncedSlug.length >= 3 && debouncedSlug.length <= 50;
-  const isSlugValidChars = /^[a-zA-Z0-9-]+$/.test(debouncedSlug);
-  const checkSlugEnabled = useCustomSlug && isSlugLengthOk && isSlugValidChars;
+  const slugFeedback = useCustomSlug
+    ? !slugLengthOk
+      ? "Must be between 3 and 50 characters."
+      : !slugCharsOk
+        ? "Letters, numbers, and hyphens only."
+        : slugAvailable === undefined
+          ? "Checking availability..."
+          : slugAvailable
+            ? "Available"
+            : "Taken or reserved"
+    : null;
 
-  const isSlugAvailable = useQuery(
-    api.links.checkSlugAvailable,
-    checkSlugEnabled ? { slug: debouncedSlug } : "skip"
-  );
+  const isSubmitDisabled =
+    !isSignedIn ||
+    isSubmitting ||
+    !originalUrl.trim() ||
+    !!showUrlError ||
+    (useCustomSlug && (!slugLengthOk || !slugCharsOk || slugAvailable === false));
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setErrorMsg(null);
+  const resetForm = () => {
+    setSuccessData(null);
+    setErrorMessage(null);
+    setIsCopied(false);
+  };
 
-    const normalizedOriginalUrl = originalUrl.trim();
-    const normalizedUrlValidation = checkUrlValidity(normalizedOriginalUrl);
-    if (!normalizedUrlValidation.isValid) {
+  const handleCopy = async () => {
+    if (!successData) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(successData.shortUrl);
+      setIsCopied(true);
+      toast({
+        title: "Short link copied",
+        description: successData.shortUrl,
+        variant: "success",
+      });
+      window.setTimeout(() => setIsCopied(false), 1800);
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Your browser blocked clipboard access.",
+        variant: "error",
+      });
+    }
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setErrorMessage(null);
+
+    if (!isSignedIn) {
+      openSignIn();
+      return;
+    }
+
+    const validation = validateUrl(originalUrl);
+    if (!validation.valid) {
+      setErrorMessage(validation.message ?? "Invalid URL.");
       return;
     }
 
     if (useCustomSlug) {
-      const slugVal = customSlug.trim();
-      if (slugVal.length < 3 || slugVal.length > 50) {
-        setErrorMsg("Custom slug must be between 3 and 50 characters.");
+      const normalized = customSlug.trim();
+      if (normalized.length < 3 || normalized.length > 50) {
+        setErrorMessage("Custom slug must be between 3 and 50 characters.");
         return;
       }
-      if (!/^[a-zA-Z0-9-]+$/.test(slugVal)) {
-        setErrorMsg("Custom slug can only contain letters, numbers, and hyphens.");
+      if (!slugPattern.test(normalized)) {
+        setErrorMessage("Custom slug can only contain letters, numbers, and hyphens.");
         return;
       }
-      if (isSlugAvailable === false) {
-        setErrorMsg("Slug is already taken.");
+      if (slugAvailable === false) {
+        setErrorMessage("This custom slug is already taken.");
         return;
       }
     }
 
-    let expiryTimestamp: number | undefined;
+    let expiresAtTimestamp: number | undefined;
     if (useExpiry) {
       if (!expiresAt) {
-        setErrorMsg("Please select an expiration date.");
+        setErrorMessage("Choose an expiration date and time.");
         return;
       }
 
-      expiryTimestamp = new Date(expiresAt).getTime();
-      if (expiryTimestamp <= Date.now()) {
-        setErrorMsg("Expiration date must be in the future.");
+      expiresAtTimestamp = new Date(expiresAt).getTime();
+      if (Number.isNaN(expiresAtTimestamp) || expiresAtTimestamp <= Date.now()) {
+        setErrorMessage("Expiration must be set in the future.");
         return;
       }
     }
 
-    setLoading(true);
-
+    setIsSubmitting(true);
     try {
       const result = await createShortLink({
-        originalUrl: normalizedOriginalUrl,
+        originalUrl: originalUrl.trim(),
         customSlug: useCustomSlug ? customSlug.trim() : undefined,
-        expiresAt: expiryTimestamp,
-        anonymousClientId: anonymousId,
+        expiresAt: expiresAtTimestamp,
       });
 
-      setSuccessData({
-        shortUrl: `${window.location.origin}/s/${result.slug}`,
-        slug: result.slug,
-      });
+      const shortUrl = `${window.location.origin}/s/${result.slug}`;
+      setSuccessData({ shortUrl, slug: result.slug });
       setOriginalUrl("");
       setCustomSlug("");
       setUseCustomSlug(false);
       setUseExpiry(false);
       setExpiresAt("");
-      setCopied(false);
+      toast({
+        title: "Link shortened",
+        description: shortUrl,
+        variant: "success",
+      });
     } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : "An unexpected error occurred.");
+      const message = error instanceof Error ? error.message : "Something went wrong while shortening the URL.";
+      setErrorMessage(message);
+      toast({
+        title: "Could not shorten link",
+        description: message,
+        variant: "error",
+      });
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
-  const handleCopy = () => {
-    if (!successData) {
-      return;
-    }
-
-    void navigator.clipboard.writeText(successData.shortUrl);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
-  };
-
-  const startNew = () => {
-    setSuccessData(null);
-    setErrorMsg(null);
-    setCopied(false);
-  };
-
-  const slugFeedback = customSlug
-    ? !isSlugLengthOk
-      ? "Must be between 3 and 50 characters."
-      : !isSlugValidChars
-        ? "Letters, numbers, and hyphens only."
-        : isSlugAvailable === undefined
-          ? "Checking availability..."
-          : isSlugAvailable
-            ? "Available!"
-            : "Taken or reserved."
-    : null;
-
-  const isSubmitDisabled =
-    loading ||
-    !hasUrl ||
-    !!urlValidationError ||
-    (useCustomSlug && (!isSlugLengthOk || !isSlugValidChars || isSlugAvailable === false));
-
-  return (
-    <div className="w-full max-w-2xl mx-auto py-10 px-4">
-      {successData ? (
-        <div className="glass-card rounded-3xl p-8 border border-purple-500/30 flex flex-col items-center text-center gap-6 animate-[fadeIn_0.3s_ease]">
-          <div className="p-3 bg-purple-500/20 rounded-full border border-purple-500/40">
-            <Sparkles className="w-8 h-8 text-purple-300" />
+  if (!isSignedIn) {
+    return (
+      <div className="mx-auto w-full max-w-3xl px-4 py-10">
+        <div className="rounded-[2rem] border border-soft-500/15 bg-white/5 p-8 text-center backdrop-blur-2xl">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-soft-500/20 bg-primary-500/10 text-light-200">
+            <Sparkles className="h-6 w-6" />
           </div>
-          <div>
-            <h2 className="text-3xl font-extrabold font-display text-white">Your Link is Ready!</h2>
-            <p className="text-sm text-slate-400 mt-2">Instantly generated and ready to share.</p>
-          </div>
-
-          <div className="w-full flex items-center justify-between gap-3 p-4 bg-slate-950/70 border border-slate-800 rounded-2xl">
-            <span className="text-slate-200 font-mono text-sm break-all select-all flex-1 text-left">
-              {successData.shortUrl}
-            </span>
-            <button
-              onClick={handleCopy}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition active:scale-95 duration-100 ${
-                copied ? "bg-green-600/30 text-green-300 border border-green-500/40" : "bg-purple-600 hover:bg-purple-500 text-white"
-              }`}
-              id="copy-short-url"
-              type="button"
-            >
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
-
-          <QRCodeDisplay shortUrl={successData.shortUrl} slug={successData.slug} />
-
+          <h2 className="mt-5 text-3xl font-display font-extrabold text-white">Sign in to create short links</h2>
+          <p className="mt-3 text-sm leading-7 text-slate-400">
+            Login first, then Scissor will take you straight to the shorten flow with live analytics and QR generation.
+          </p>
           <button
-            onClick={startNew}
-            className="text-xs text-purple-400 hover:text-purple-300 font-bold transition flex items-center gap-1.5"
-            id="shorten-another-btn"
             type="button"
+            onClick={openSignIn}
+            className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-primary-600 to-accent-500 px-5 py-3 text-sm font-semibold text-white transition hover:from-accent-500 hover:to-primary-500"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Shorten another URL
+            Sign In
           </button>
         </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="glass-card rounded-3xl p-8 border border-purple-500/20 flex flex-col gap-6" id="shorten-form">
-          <div className="text-center md:text-left">
-            <h2 className="text-3xl font-extrabold font-display text-white flex items-center justify-center md:justify-start gap-2">
-              <Sparkles className="w-6 h-6 text-purple-400" />
-              Shorten a long URL
-            </h2>
-            <p className="text-sm text-slate-400 mt-1">
-              Paste your link below. {!isSignedIn && "Guests are limited to 5 links per 24 hours."}
-            </p>
-          </div>
+      </div>
+    );
+  }
 
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold text-slate-300 flex items-center gap-2" htmlFor="original-url-input">
-              <Link2 className="w-4 h-4 text-purple-400" />
+  if (successData) {
+    return (
+      <div className="mx-auto w-full max-w-3xl px-4 py-10">
+        <div className="rounded-[2rem] border border-soft-500/15 bg-white/5 p-8 shadow-2xl shadow-primary-950/30 backdrop-blur-2xl">
+          <div className="flex flex-col items-center gap-5 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-primary-500/20 bg-primary-500/10 text-soft-200">
+              <Check className="h-7 w-7" />
+            </div>
+            <div>
+              <h2 className="text-3xl font-display font-extrabold text-white">Your link is ready</h2>
+              <p className="mt-2 text-sm text-slate-400">Copy it now, or open the dashboard to inspect performance later.</p>
+            </div>
+
+            <div className="flex w-full flex-col gap-3 rounded-2xl border border-white/8 bg-[#09080d] p-4 sm:flex-row sm:items-center">
+              <span className="min-w-0 flex-1 break-all font-mono text-sm text-slate-200">{successData.shortUrl}</span>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-accent-500"
+                id="copy-short-url"
+              >
+                {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {isCopied ? "Copied" : "Copy"}
+              </button>
+            </div>
+
+            <QRCodeDisplay shortUrl={successData.shortUrl} slug={successData.slug} />
+
+            <button
+              type="button"
+              onClick={resetForm}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-soft-200 transition hover:text-light-200"
+              id="shorten-another-btn"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Shorten another URL
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-3xl px-4 py-10">
+      <form
+        id="shorten-form"
+        onSubmit={handleSubmit}
+        className="rounded-[2rem] border border-soft-500/15 bg-white/5 p-6 shadow-2xl shadow-primary-950/20 backdrop-blur-2xl sm:p-8"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-soft-200">Create link</p>
+            <h2 className="mt-2 text-3xl font-display font-extrabold text-white">Shorten a long URL</h2>
+            <p className="mt-2 text-sm text-slate-400">Paste a destination, pick a slug or expiry, and generate a branded link in seconds.</p>
+          </div>
+          <div className="hidden rounded-2xl border border-soft-500/15 bg-white/5 p-3 text-soft-200 sm:block">
+            <Sparkles className="h-5 w-5" />
+          </div>
+        </div>
+
+        <div className="mt-6 space-y-6">
+          <div>
+            <label htmlFor="original-url-input" className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+              <Link2 className="h-4 w-4 text-soft-200" />
               Destination URL
             </label>
             <input
-              type="text"
               id="original-url-input"
+              type="text"
               value={originalUrl}
-              onChange={(e) => setOriginalUrl(e.target.value)}
-              placeholder="https://example.com/very/long/path/to/some/resource"
-              required
-              className="w-full px-4 py-3.5 rounded-2xl glass-input text-slate-200 text-sm font-sans"
+              onChange={(event) => setOriginalUrl(event.target.value)}
+              placeholder="https://example.com/very/long/path"
+              className="w-full rounded-2xl border border-soft-500/15 bg-[#09080d] px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-primary-500/40"
+              aria-invalid={Boolean(showUrlError)}
             />
-            {urlValidationError && (
-              <span className="text-xs text-red-400 flex items-center gap-1.5 mt-1" id="url-validation-error">
-                <AlertCircle className="w-3.5 h-3.5" />
-                {urlValidationError}
-              </span>
-            )}
+            {showUrlError ? (
+              <p className="mt-2 flex items-start gap-2 text-xs text-rose-300" id="url-validation-error">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {showUrlError}
+              </p>
+            ) : null}
           </div>
 
-          <div className="flex flex-col gap-3">
-            <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer select-none">
+          <div className="space-y-3">
+            <label className="flex cursor-pointer items-center gap-3 text-sm text-slate-200">
               <input
+                id="custom-slug-toggle"
                 type="checkbox"
                 checked={useCustomSlug}
-                onChange={(e) => {
-                  setUseCustomSlug(e.target.checked);
-                  if (!e.target.checked) {
+                onChange={(event) => {
+                  setUseCustomSlug(event.target.checked);
+                  if (!event.target.checked) {
                     setCustomSlug("");
                   }
                 }}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-purple-600 focus:ring-purple-500 focus:ring-offset-slate-900 cursor-pointer"
-                id="custom-slug-toggle"
+                className="h-4 w-4 rounded border-slate-700 bg-[#09080d] text-primary-500 focus:ring-primary-500"
               />
-              Configure Branded Custom Slug
+              Add a custom slug
             </label>
 
-            {useCustomSlug && (
-              <div className="flex flex-col gap-2 pl-6 animate-[fadeIn_0.2s_ease]">
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-500 font-mono text-sm">{window.location.origin}/s/</span>
+            {useCustomSlug ? (
+              <div className="rounded-2xl border border-soft-500/15 bg-[#09080d]/60 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <span className="font-mono text-sm text-slate-500">{window.location.origin}/s/</span>
                   <input
-                    type="text"
                     id="custom-slug-input"
+                    type="text"
                     value={customSlug}
-                    onChange={(e) => setCustomSlug(e.target.value.toLowerCase().replace(/\s+/g, ""))}
-                    placeholder="my-custom-slug"
-                    className="flex-1 px-4 py-2 rounded-xl glass-input text-slate-200 text-sm font-mono"
+                    onChange={(event) => setCustomSlug(event.target.value.toLowerCase().replace(/\s+/g, ""))}
+                    placeholder="my-brand"
+                    className="min-w-0 flex-1 rounded-xl border border-soft-500/15 bg-[#050407] px-4 py-2.5 font-mono text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-primary-500/40"
                   />
                 </div>
-                {slugFeedback && (
-                  <div className="text-xs mt-1" id="slug-feedback">
-                    {slugFeedback === "Available!" ? (
-                      <span className="text-green-400 font-bold">{slugFeedback}</span>
-                    ) : slugFeedback === "Taken or reserved." ? (
-                      <span className="text-red-400 font-bold">{slugFeedback}</span>
-                    ) : (
-                      <span className="text-slate-400">{slugFeedback}</span>
-                    )}
-                  </div>
-                )}
+                {slugFeedback ? (
+                  <p
+                    id="slug-feedback"
+                    className={`mt-2 text-xs ${
+                      slugFeedback === "Available"
+                        ? "text-soft-200"
+                        : slugFeedback === "Taken or reserved"
+                          ? "text-rose-300"
+                          : "text-slate-400"
+                    }`}
+                  >
+                    {slugFeedback}
+                  </p>
+                ) : null}
               </div>
-            )}
+            ) : null}
           </div>
 
-          <div className="flex flex-col gap-3">
-            <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer select-none">
+          <div className="space-y-3">
+            <label className="flex cursor-pointer items-center gap-3 text-sm text-slate-200">
               <input
+                id="expiry-toggle"
                 type="checkbox"
                 checked={useExpiry}
-                onChange={(e) => {
-                  setUseExpiry(e.target.checked);
-                  if (!e.target.checked) {
+                onChange={(event) => {
+                  setUseExpiry(event.target.checked);
+                  if (!event.target.checked) {
                     setExpiresAt("");
                   }
                 }}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-purple-600 focus:ring-purple-500 focus:ring-offset-slate-900 cursor-pointer"
-                id="expiry-toggle"
+                className="h-4 w-4 rounded border-slate-700 bg-[#09080d] text-primary-500 focus:ring-primary-500"
               />
-              Set Link Expiration Date
+              Set an expiry date
             </label>
 
-            {useExpiry && (
-              <div className="flex flex-col gap-2 pl-6 animate-[fadeIn_0.2s_ease]">
-                <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5" htmlFor="expiry-input">
-                  <Calendar className="w-3.5 h-3.5 text-blue-400" />
-                  Select Date & Time (Local)
+            {useExpiry ? (
+              <div className="rounded-2xl border border-white/8 bg-[#09080d]/60 p-4">
+                <label htmlFor="expiry-input" className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  <Calendar className="h-4 w-4 text-soft-200" />
+                  Date and time
                 </label>
                 <input
-                  type="datetime-local"
                   id="expiry-input"
+                  type="datetime-local"
                   value={expiresAt}
-                  onChange={(e) => setExpiresAt(e.target.value)}
-                  className="px-4 py-2.5 rounded-xl glass-input text-slate-200 text-sm font-sans"
+                  onChange={(event) => setExpiresAt(event.target.value)}
+                  className="w-full rounded-xl border border-soft-500/15 bg-[#050407] px-4 py-2.5 text-sm text-slate-100 outline-none transition focus:border-primary-500/40"
                 />
               </div>
-            )}
+            ) : null}
           </div>
 
-          {errorMsg && (
-            <div className="p-4 bg-red-950/40 border border-red-500/30 rounded-2xl text-red-400 text-sm flex items-start gap-2.5" id="form-error-alert">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          {errorMessage ? (
+            <div id="form-error-alert" className="flex items-start gap-3 rounded-2xl border border-soft-500/20 bg-primary-950/25 p-4 text-light-200">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <div>
-                <span className="font-bold">Error shortening link:</span>
-                <p className="mt-0.5 text-xs text-red-300">{errorMsg}</p>
+                <p className="text-sm font-semibold">Could not create link</p>
+                <p className="mt-1 text-xs text-light-200/80">{errorMessage}</p>
               </div>
             </div>
-          )}
+          ) : null}
 
           <button
+            id="shorten-submit-btn"
             type="submit"
             disabled={isSubmitDisabled}
-            className="w-full py-4 mt-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-base font-extrabold rounded-2xl flex items-center justify-center gap-2 transition active:scale-98 shadow-xl shadow-purple-950/30 glow-button cursor-pointer"
-            id="shorten-submit-btn"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-primary-600 to-accent-500 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-primary-950/30 transition hover:from-accent-500 hover:to-primary-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Shortening..." : "Get Shortened Link"}
+            {isSubmitting ? "Shortening..." : "Get Shortened Link"}
           </button>
-        </form>
-      )}
+        </div>
+      </form>
     </div>
   );
 }

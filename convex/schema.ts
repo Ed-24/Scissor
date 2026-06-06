@@ -10,6 +10,7 @@ export default defineSchema({
     createdAt: v.number(),
     expiresAt: v.optional(v.number()),
     status: v.string(), // "active" | "expired"
+    clickCount: v.number(),
   })
   .index("by_slug", ["slug"])
   .index("by_userId", ["userId"])
@@ -21,5 +22,8 @@ export default defineSchema({
     referrer: v.string(),
     country: v.string(),
     device: v.string(),
-  }).index("by_linkId", ["linkId"]),
+    visitorKey: v.optional(v.string()),
+  })
+    .index("by_linkId", ["linkId"])
+    .index("by_linkId_timestamp", ["linkId", "timestamp"]),
 });

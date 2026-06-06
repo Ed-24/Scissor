@@ -39,6 +39,93 @@ function parseReferrer(referrerUrl: string | null): string {
   }
 }
 
+function renderStatusPage(title: string, heading: string, description: string, accent: string, statusCode: 404 | 410) {
+  return new Response(
+    `<!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>${title}</title>
+        <style>
+          :root {
+            color-scheme: dark;
+          }
+          * { box-sizing: border-box; }
+          body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            background:
+              radial-gradient(circle at top left, rgba(33,94,104,0.26), transparent 35%),
+              radial-gradient(circle at bottom right, rgba(92,147,150,0.14), transparent 32%),
+              #013137;
+            color: #f8fafc;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            padding: 24px;
+          }
+          .card {
+            width: min(100%, 560px);
+            border-radius: 28px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(1, 31, 55, 0.9);
+            backdrop-filter: blur(18px);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+            padding: 32px;
+          }
+          .eyebrow {
+            text-transform: uppercase;
+            letter-spacing: 0.24em;
+            font-size: 11px;
+            font-weight: 700;
+            color: ${accent};
+            margin-bottom: 12px;
+          }
+          h1 {
+            margin: 0;
+            font-size: clamp(2rem, 4vw, 3rem);
+            line-height: 1.05;
+          }
+          p {
+            margin: 14px 0 0;
+            color: #94a3b8;
+            font-size: 1rem;
+            line-height: 1.7;
+          }
+          a {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 24px;
+            border-radius: 16px;
+            padding: 12px 18px;
+            background: linear-gradient(135deg, #215E68, #297376);
+            color: white;
+            text-decoration: none;
+            font-weight: 700;
+          }
+        </style>
+      </head>
+      <body>
+        <main class="card">
+          <div class="eyebrow">Scissor</div>
+          <h1>${heading}</h1>
+          <p>${description}</p>
+          <a href="/">Back to Scissor</a>
+        </main>
+      </body>
+    </html>`,
+    {
+      status: statusCode,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+    }
+  );
+}
+
 http.route({
   pathPrefix: "/s/",
   method: "GET",
@@ -56,67 +143,23 @@ http.route({
     
     // 2. Handle missing link
     if (!link) {
-      return new Response(
-        `<!DOCTYPE html>
-        <html lang="en">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Link Not Found - Scissor</title>
-            <style>
-              body { background: #050407; color: #f1f5f9; font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-              .card { text-align: center; border: 1px solid rgba(239, 68, 68, 0.2); padding: 40px; border-radius: 16px; background: rgba(13, 11, 20, 0.8); max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); backdrop-filter: blur(10px); }
-              h1 { color: #f87171; font-size: 28px; margin: 0 0 16px; font-weight: 700; }
-              p { color: #94a3b8; line-height: 1.6; margin: 0 0 24px; }
-              a { display: inline-block; background: #8b5cf6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: background 0.2s; }
-              a:hover { background: #7c3aed; }
-            </style>
-          </head>
-          <body>
-            <div class="card">
-              <h1>Link Not Found</h1>
-              <p>The short link you are trying to access does not exist, has been deleted, or was entered incorrectly.</p>
-              <a href="/">Go to Scissor</a>
-            </div>
-          </body>
-        </html>`,
-        {
-          status: 404,
-          headers: { "Content-Type": "text/html" }
-        }
+      return renderStatusPage(
+        "Link Not Found - Scissor",
+        "Link not found",
+        "The short link does not exist, has been deleted, or was entered incorrectly.",
+        "#C1D9DE",
+        404
       );
     }
 
     // 3. Handle expired link
     if (link.status === "expired" || (link.expiresAt && link.expiresAt <= Date.now())) {
-      return new Response(
-        `<!DOCTYPE html>
-        <html lang="en">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Link Expired - Scissor</title>
-            <style>
-              body { background: #050407; color: #f1f5f9; font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-              .card { text-align: center; border: 1px solid rgba(139, 92, 246, 0.2); padding: 40px; border-radius: 16px; background: rgba(13, 11, 20, 0.8); max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); backdrop-filter: blur(10px); }
-              h1 { color: #c084fc; font-size: 28px; margin: 0 0 16px; font-weight: 700; }
-              p { color: #94a3b8; line-height: 1.6; margin: 0 0 24px; }
-              a { display: inline-block; background: #8b5cf6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: background 0.2s; }
-              a:hover { background: #7c3aed; }
-            </style>
-          </head>
-          <body>
-            <div class="card">
-              <h1>Link Expired</h1>
-              <p>This short link has expired and is no longer accepting redirects. Access to this destination is gone.</p>
-              <a href="/">Go to Scissor</a>
-            </div>
-          </body>
-        </html>`,
-        {
-          status: 410,
-          headers: { "Content-Type": "text/html" }
-        }
+      return renderStatusPage(
+        "Link Expired - Scissor",
+        "Link expired",
+        "This short link has expired and is no longer accepting redirects.",
+        "#5C9396",
+        410
       );
     }
 
@@ -128,6 +171,7 @@ http.route({
     
     const device = getDeviceType(userAgent);
     const referrer = parseReferrer(referrerUrl);
+    const visitorKey = [userAgent || "unknown", referrer, country, device].join("|");
 
     // 5. Track click asynchronously
     await ctx.runMutation(api.clicks.trackClick, {
@@ -135,6 +179,7 @@ http.route({
       referrer,
       country,
       device,
+      visitorKey,
     });
 
     // 6. Return 302 Found Redirect

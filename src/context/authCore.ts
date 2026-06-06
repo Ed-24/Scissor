@@ -9,142 +9,180 @@ export interface AuthUser {
   id: string;
   fullName: string | null;
   primaryEmailAddress: string | null;
+  imageUrl: string | null;
 }
 
 export interface AuthContextType {
   isLoaded: boolean;
   isSignedIn: boolean;
-  user: AuthUser | null;
-  anonymousId: string;
-  signOut: () => Promise<void>;
-  signInMock: (username: string) => void;
   isMock: boolean;
+  user: AuthUser | null;
+  signOut: () => Promise<void>;
+  openSignIn: () => void;
+  openSignUp: () => void;
+}
+
+export interface MockLinkRecord {
+  _id: string;
+  slug: string;
+  originalUrl: string;
+  userId?: string;
+  anonymousClientId?: string;
+  createdAt: number;
+  expiresAt?: number;
+  status: "active" | "expired";
+  clickCount: number;
+}
+
+export interface MockClickRecord {
+  _id: string;
+  linkId: string;
+  timestamp: number;
+  referrer: string;
+  country: string;
+  device: string;
+  visitorKey: string;
+}
+
+export interface MockState {
+  links: MockLinkRecord[];
+  clicks: MockClickRecord[];
+  currentUser: AuthUser | null;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function getOrCreateAnonymousId(): string {
-  let id = localStorage.getItem("scissor_anon_id");
-  if (!id) {
-    id = `guest_${Math.random().toString(36).slice(2, 15)}${Math.random().toString(36).slice(2, 15)}`;
-    localStorage.setItem("scissor_anon_id", id);
-  }
-  return id;
-}
+const MOCK_WINDOW_PREFIX = "scissor-mock-state:";
 
-export function loadMockUser(): AuthUser | null {
-  const savedUser = localStorage.getItem("scissor_mock_user");
-  if (!savedUser) {
+function readMockStateFromWindow(): MockState | null {
+  if (typeof window === "undefined" || !window.name.startsWith(MOCK_WINDOW_PREFIX)) {
     return null;
   }
 
   try {
-    return JSON.parse(savedUser) as AuthUser;
+    return JSON.parse(window.name.slice(MOCK_WINDOW_PREFIX.length)) as MockState;
   } catch {
-    localStorage.removeItem("scissor_mock_user");
     return null;
   }
 }
 
-export function createMockUser(username: string): AuthUser {
-  const safeUsername = username.trim();
-  const normalizedId = safeUsername.toLowerCase().replace(/[^a-z0-9]/g, "_");
+export function persistMockState(state: MockState): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.name = `${MOCK_WINDOW_PREFIX}${JSON.stringify(state)}`;
+}
+
+export function createMockUser(displayName: string): AuthUser {
+  const safeName = displayName.trim() || "Scissor User";
+  const normalized = safeName.toLowerCase().replace(/[^a-z0-9]/g, "");
 
   return {
-    id: `mock_${normalizedId}`,
-    fullName: safeUsername,
-    primaryEmailAddress: `${safeUsername.toLowerCase().replace(/[^a-z0-9]/g, "") || "user"}@example.com`,
+    id: `mock_${normalized || "user"}`,
+    fullName: safeName,
+    primaryEmailAddress: `${normalized || "user"}@example.com`,
+    imageUrl: null,
   };
 }
 
-// Mock Convex client functionality for E2E testing
-function setupConvexMock(client: any) {
-  const getLinks = (): any[] => {
-    try {
-      return JSON.parse(localStorage.getItem("mock_convex_links") || "[]");
-    } catch {
-      return [];
-    }
-  };
+export function getMockState(): MockState {
+  const root = window as Window & { __SCISSOR_MOCK_STATE__?: MockState };
+  if (!root.__SCISSOR_MOCK_STATE__) {
+    root.__SCISSOR_MOCK_STATE__ = readMockStateFromWindow() ?? {
+      links: [],
+      clicks: [],
+      currentUser: null,
+    };
+    persistMockState(root.__SCISSOR_MOCK_STATE__);
+  }
+  return root.__SCISSOR_MOCK_STATE__;
+}
 
-  const saveLinks = (links: any[]) => {
-    localStorage.setItem("mock_convex_links", JSON.stringify(links));
-  };
-
-  const getClicks = (): any[] => {
-    try {
-      return JSON.parse(localStorage.getItem("mock_convex_clicks") || "[]");
-    } catch {
-      return [];
-    }
-  };
-
-  const saveClicks = (clicks: any[]) => {
-    localStorage.setItem("mock_convex_clicks", JSON.stringify(clicks));
-  };
-
+function setupConvexMock(client: ConvexReactClient) {
   const listeners = new Set<() => void>();
-  const triggerQueries = () => {
-    listeners.forEach((l) => l());
+  const notify = () => {
+    listeners.forEach((listener) => listener());
   };
 
-  client.mutation = async (funcRef: any, args: any) => {
-    const path = funcRef._toApiString || funcRef.name || String(funcRef);
+  const getPath = (funcRef: any) => funcRef?._toApiString || funcRef?.name || String(funcRef);
+  const getState = () => getMockState();
+
+  (client as any).mutation = async (funcRef: any, args: any) => {
+    const path = getPath(funcRef);
+    const state = getState();
 
     if (path.includes("create")) {
-      const links = getLinks();
       const slug = args.customSlug || Math.random().toString(36).slice(2, 8);
 
-      if (args.customSlug && links.some((l: any) => l.slug === args.customSlug)) {
-        throw new Error("Slug is already taken.");
+      if (args.customSlug && state.links.some((link) => link.slug === args.customSlug)) {
+        throw new Error("This custom slug is already taken.");
       }
 
-      const newLink = {
-        _id: `link_${Math.random().toString(36).slice(2, 9)}`,
+      const now = Date.now();
+      const record: MockLinkRecord = {
+        _id: `link_${Math.random().toString(36).slice(2, 10)}`,
         slug,
         originalUrl: args.originalUrl,
+        userId: state.currentUser?.id,
+        createdAt: now,
         expiresAt: args.expiresAt,
-        anonymousClientId: args.anonymousClientId,
-        createdAt: Date.now(),
         status: "active",
+        clickCount: 0,
       };
 
-      links.push(newLink);
-      saveLinks(links);
-      triggerQueries();
-      return newLink;
+      state.links.unshift(record);
+      persistMockState(state);
+      notify();
+      return { linkId: record._id, slug: record.slug };
     }
 
     if (path.includes("deleteLink")) {
-      let links = getLinks();
-      links = links.filter((l: any) => l._id !== args.id);
-      saveLinks(links);
-      triggerQueries();
+      state.links = state.links.filter((link) => link._id !== args.id);
+      state.clicks = state.clicks.filter((click) => click.linkId !== args.id);
+      persistMockState(state);
+      notify();
       return null;
     }
 
     if (path.includes("bulkDelete")) {
-      let links = getLinks();
-      const idsToDelete = new Set(args.ids);
-      links = links.filter((l: any) => !idsToDelete.has(l._id));
-      saveLinks(links);
-      triggerQueries();
+      const ids = new Set<string>(args.ids);
+      state.links = state.links.filter((link) => !ids.has(link._id));
+      state.clicks = state.clicks.filter((click) => !ids.has(click.linkId));
+      persistMockState(state);
+      notify();
       return null;
     }
 
     if (path.includes("trackClick")) {
-      const clicks = getClicks();
-      const newClick = {
-        _id: `click_${Math.random().toString(36).slice(2, 9)}`,
+      const now = Date.now();
+      const click = {
+        _id: `click_${Math.random().toString(36).slice(2, 10)}`,
         linkId: args.linkId,
+        timestamp: now,
         referrer: args.referrer || "Direct",
         country: args.country || "US",
         device: args.device || "Desktop",
-        createdAt: Date.now(),
+        visitorKey: args.visitorKey || "mock-visitor",
       };
-      clicks.push(newClick);
-      saveClicks(clicks);
-      triggerQueries();
+
+      state.clicks.unshift(click);
+      const link = state.links.find((candidate) => candidate._id === args.linkId);
+      if (link) {
+        link.clickCount += 1;
+      }
+      persistMockState(state);
+      notify();
+      return null;
+    }
+
+    if (path.includes("expireLink")) {
+      const link = state.links.find((candidate) => candidate.slug === args.slug);
+      if (link) {
+        link.status = "expired";
+      }
+      persistMockState(state);
+      notify();
       return null;
     }
 
@@ -152,62 +190,50 @@ function setupConvexMock(client: any) {
   };
 
   client.watchQuery = (funcRef: any, args: any) => {
-    const path = funcRef._toApiString || funcRef.name || String(funcRef);
+    const path = getPath(funcRef);
 
     return {
       localQueryResult: () => {
-        if (args === "skip") return undefined;
+        if (args === "skip") {
+          return undefined;
+        }
+
+        const state = getState();
 
         if (path.includes("checkSlugAvailable")) {
-          const links = getLinks();
-          const taken = links.some((l: any) => l.slug === args.slug);
-          return !taken;
+          const slug = String(args.slug || "").trim();
+          return !state.links.some((link) => link.slug === slug);
         }
 
         if (path.includes("listUserLinks")) {
-          const links = getLinks();
-          const clicks = getClicks();
-
-          const userLinks = links.filter((l: any) => {
-            if (args.anonymousClientId) {
-              return l.anonymousClientId === args.anonymousClientId;
-            }
-            return true;
-          });
-
-          return userLinks.map((l: any) => {
-            const count = clicks.filter((c: any) => c.linkId === l._id).length;
-            return {
-              ...l,
-              clickCount: count,
-            };
-          });
+          const userId = state.currentUser?.id;
+          return state.links
+            .filter((link) => (userId ? link.userId === userId : true))
+            .map((link) => ({ ...link }));
         }
 
         if (path.includes("getLinkAnalytics")) {
-          const clicks = getClicks();
-          const linkClicks = clicks.filter((c: any) => c.linkId === args.linkId);
+          const linkClicks = state.clicks.filter((click) => click.linkId === args.linkId);
+          const clicksByDate: Record<string, number> = {};
+          const referrers: Record<string, number> = {};
+          const devices: Record<string, number> = {};
+          const countries: Record<string, number> = {};
 
-          const refMap: Record<string, number> = {};
-          const devMap: Record<string, number> = {};
-          const countryMap: Record<string, number> = {};
-          const timeMap: Record<string, number> = {};
-
-          linkClicks.forEach((c: any) => {
-            refMap[c.referrer] = (refMap[c.referrer] || 0) + 1;
-            devMap[c.device] = (devMap[c.device] || 0) + 1;
-            countryMap[c.country] = (countryMap[c.country] || 0) + 1;
-
-            const dateStr = new Date(c.createdAt).toISOString().split("T")[0];
-            timeMap[dateStr] = (timeMap[dateStr] || 0) + 1;
+          linkClicks.forEach((click) => {
+            const dateKey = new Date(click.timestamp).toISOString().slice(0, 10);
+            clicksByDate[dateKey] = (clicksByDate[dateKey] || 0) + 1;
+            referrers[click.referrer] = (referrers[click.referrer] || 0) + 1;
+            devices[click.device] = (devices[click.device] || 0) + 1;
+            countries[click.country] = (countries[click.country] || 0) + 1;
           });
 
           return {
             totalClicks: linkClicks.length,
-            clicksOverTime: Object.entries(timeMap).map(([date, count]) => ({ date, count })),
-            referrers: Object.entries(refMap).map(([referrer, count]) => ({ referrer, count })),
-            devices: Object.entries(devMap).map(([device, count]) => ({ device, count })),
-            countries: Object.entries(countryMap).map(([country, count]) => ({ country, count })),
+            uniqueClicks: new Set(linkClicks.map((click) => click.visitorKey)).size,
+            clicksOverTime: Object.entries(clicksByDate).map(([date, count]) => ({ date, count })),
+            referrers: Object.entries(referrers).map(([referrer, count]) => ({ referrer, count })),
+            devices: Object.entries(devices).map(([device, count]) => ({ device, count })),
+            countries: Object.entries(countries).map(([country, count]) => ({ country, count })),
           };
         }
 
@@ -215,15 +241,19 @@ function setupConvexMock(client: any) {
       },
       onUpdate: (callback: () => void) => {
         listeners.add(callback);
-        return () => {
-          listeners.delete(callback);
-        };
+        return () => listeners.delete(callback);
       },
       journal: () => undefined,
     };
   };
 }
 
-if (typeof window !== "undefined" && (window as any).__PLAYWRIGHT_MOCK__) {
+export function isMockMode(): boolean {
+  const isPlaywrightMock = typeof window !== "undefined" && (window as Window & { __PLAYWRIGHT_MOCK__?: boolean }).__PLAYWRIGHT_MOCK__ === true;
+  const isMissingClerkKey = !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  return isPlaywrightMock || isMissingClerkKey;
+}
+
+if (typeof window !== "undefined" && isMockMode()) {
   setupConvexMock(convexClient);
 }

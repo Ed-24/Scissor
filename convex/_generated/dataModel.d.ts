@@ -11,6 +11,7 @@ export type Doc<TableName extends TableNames> = TableName extends "links"
       createdAt: number;
       expiresAt?: number;
       status: "active" | "expired";
+      clickCount: number;
     }
   : TableName extends "clicks"
   ? {
@@ -21,6 +22,7 @@ export type Doc<TableName extends TableNames> = TableName extends "links"
       referrer: string;
       country: string;
       device: string;
+      visitorKey?: string;
     }
   : never;
 
@@ -43,6 +45,7 @@ export type DataModel = {
     fieldPaths: keyof Doc<"clicks">;
     indexes: {
       by_linkId: ["linkId"];
+      by_linkId_timestamp: ["linkId", "timestamp"];
     };
   };
 };

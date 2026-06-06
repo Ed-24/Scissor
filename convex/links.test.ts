@@ -91,4 +91,16 @@ describe("Scissor Backend - Unit & Integration Tests", () => {
       })
     ).rejects.toThrow("Rate limit reached.");
   });
+
+  test("Rejects past expiry timestamps", async () => {
+    const t = createTestEnv();
+
+    await expect(
+      t.mutation(create, {
+        originalUrl: "https://example.com",
+        expiresAt: Date.now() - 60_000,
+        anonymousClientId: "test-guest-client",
+      })
+    ).rejects.toThrow("Expiration date must be in the future.");
+  });
 });

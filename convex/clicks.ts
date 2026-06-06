@@ -19,14 +19,23 @@ export const trackClick = mutation({
     referrer: v.string(),
     country: v.string(),
     device: v.string(),
+    visitorKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const link = await ctx.db.get(args.linkId);
+    if (link) {
+      await ctx.db.patch(args.linkId, {
+        clickCount: (link.clickCount ?? 0) + 1,
+      });
+    }
+
     await ctx.db.insert("clicks", {
       linkId: args.linkId,
       timestamp: Date.now(),
       referrer: args.referrer,
       country: args.country,
       device: args.device,
+      visitorKey: args.visitorKey,
     });
   },
 });
@@ -51,7 +60,7 @@ export const getLinkAnalytics = query({
 
     const clicks = await ctx.db
       .query("clicks")
-      .withIndex("by_linkId", (q) => q.eq("linkId", args.linkId))
+      .withIndex("by_linkId_timestamp", (q) => q.eq("linkId", args.linkId))
       .collect();
 
     const clicksByDate: Record<string, number> = {};
@@ -93,6 +102,7 @@ export const getLinkAnalytics = query({
 
     return {
       totalClicks: clicks.length,
+      uniqueClicks: new Set(clicks.map((click) => click.visitorKey ?? `${click.referrer}-${click.country}-${click.device}`)).size,
       clicksOverTime,
       referrers,
       devices,
