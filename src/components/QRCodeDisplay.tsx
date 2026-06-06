@@ -10,9 +10,9 @@ interface QRCodeDisplayProps {
 const CORRECTION_LEVELS: Array<"L" | "M" | "Q" | "H"> = ["L", "M", "Q", "H"];
 
 export default function QRCodeDisplay({ shortUrl, slug }: QRCodeDisplayProps) {
-  const [foregroundColor, setForegroundColor] = useState("#215E68");
-  const [backgroundColor, setBackgroundColor] = useState("#f2fbfc");
-  const [errorCorrectionLevel, setErrorCorrectionLevel] = useState<"L" | "M" | "Q" | "H">("Q");
+  const [foregroundColor, setForegroundColor] = useState("#000000");
+  const [backgroundColor, setBackgroundColor] = useState("#ffffff");
+  const [errorCorrectionLevel, setErrorCorrectionLevel] = useState<"L" | "M" | "Q" | "H">("H");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [downloadState, setDownloadState] = useState<"png" | "svg" | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);

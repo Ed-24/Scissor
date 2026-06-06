@@ -1,5 +1,4 @@
-import { useState, type ReactNode } from "react";
-import { ConvexProvider } from "convex/react";
+import { type ReactNode } from "react";
 import {
   ClerkProvider,
   useAuth as useClerkAuth,
@@ -10,47 +9,10 @@ import { ConvexProviderWithClerk } from "convex/react-clerk";
 import {
   AuthContext,
   convexClient,
-  createMockUser,
   isMockMode,
-  getMockState,
-  persistMockState,
   type AuthUser,
 } from "./authCore";
-
-function MockAuthProvider({ children }: { children: ReactNode }) {
-  const state = getMockState();
-  const [, forceRender] = useState(0);
-  const isLoaded = true;
-  const isSignedIn = state.currentUser !== null;
-
-  return (
-    <AuthContext.Provider
-      value={{
-        isLoaded,
-        isSignedIn,
-        isMock: true,
-        user: state.currentUser,
-        signOut: async () => {
-          state.currentUser = null;
-          persistMockState(state);
-          forceRender((value) => value + 1);
-        },
-        openSignIn: () => {
-          state.currentUser = createMockUser("Scissor Demo User");
-          persistMockState(state);
-          forceRender((value) => value + 1);
-        },
-        openSignUp: () => {
-          state.currentUser = createMockUser("Scissor Demo User");
-          persistMockState(state);
-          forceRender((value) => value + 1);
-        },
-      }}
-    >
-      <ConvexProvider client={convexClient}>{children}</ConvexProvider>
-    </AuthContext.Provider>
-  );
-}
+import { ConvexProvider } from "convex/react";
 
 function ClerkAuthWrapper({ children }: { children: ReactNode }) {
   const { isLoaded: clerkLoaded, isSignedIn } = useClerkAuth();
@@ -89,14 +51,40 @@ const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 export function UnifiedAuthProvider({ children }: { children: ReactNode }) {
   if (isMockMode()) {
-    if (!CLERK_PUBLISHABLE_KEY) {
-      console.warn("Scissor: Missing VITE_CLERK_PUBLISHABLE_KEY. Falling back to Demo Mode.");
-    }
-    return <MockAuthProvider>{children}</MockAuthProvider>;
+    return (
+      <ConvexProvider client={convexClient}>
+        <AuthContext.Provider
+          value={{
+            isLoaded: true,
+            isSignedIn: false,
+            isMock: true,
+            user: null,
+            signOut: async () => {},
+            openSignIn: () => {},
+            openSignUp: () => {},
+          }}
+        >
+          {children}
+        </AuthContext.Provider>
+      </ConvexProvider>
+    );
+  }
+
+  if (!CLERK_PUBLISHABLE_KEY) {
+    return (
+      <div className="min-h-screen bg-[#011F23] flex items-center justify-center p-6 text-center">
+        <div className="max-w-md p-8 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl">
+          <h2 className="text-2xl font-display font-bold text-white mb-4">Configuration Required</h2>
+          <p className="text-slate-400 text-sm leading-relaxed mb-6">
+            Please add your <code className="bg-white/10 px-1.5 py-0.5 rounded">VITE_CLERK_PUBLISHABLE_KEY</code> to your <code className="bg-white/10 px-1.5 py-0.5 rounded">.env.local</code> file to enable authentication.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY!}>
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
       <ConvexProviderWithClerk client={convexClient} useAuth={useClerkAuth}>
         <ClerkAuthWrapper>{children}</ClerkAuthWrapper>
       </ConvexProviderWithClerk>

@@ -142,10 +142,10 @@ export default function Dashboard({ onSelectLink }: DashboardProps) {
 
   if (links === undefined) {
     return (
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-center px-4 py-16">
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-center px-4 py-32">
         <div className="flex flex-col items-center gap-4 rounded-[2rem] border border-white/8 bg-white/5 px-8 py-10 text-center backdrop-blur-2xl">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
-          <p className="text-sm font-medium text-slate-300">Loading your dashboard...</p>
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-purple-500/30 border-t-purple-500" />
+          <p className="text-sm font-medium text-slate-300">Fetching your links...</p>
         </div>
       </div>
     );
@@ -153,12 +153,18 @@ export default function Dashboard({ onSelectLink }: DashboardProps) {
 
   if (!isSignedIn) {
     return (
-      <div className="mx-auto flex w-full max-w-4xl items-center justify-center px-4 py-16">
+      <div className="mx-auto flex w-full max-w-4xl items-center justify-center px-4 py-32">
         <div className="rounded-[2rem] border border-white/8 bg-white/5 p-8 text-center backdrop-blur-2xl">
           <h2 className="text-3xl font-display font-extrabold text-white">Sign in to view your dashboard</h2>
           <p className="mt-3 text-sm leading-7 text-slate-400">
-            Your dashboard lives behind Clerk authentication so your links and analytics stay private.
+            Your dashboard lives behind authentication so your links and analytics stay private.
           </p>
+          <button
+            onClick={() => window.location.href = "/sign-in"}
+            className="mt-6 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold transition-all"
+          >
+            Sign In Now
+          </button>
         </div>
       </div>
     );
@@ -169,10 +175,10 @@ export default function Dashboard({ onSelectLink }: DashboardProps) {
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-4 rounded-[2rem] border border-white/8 bg-white/5 p-6 backdrop-blur-2xl lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-soft-200">Dashboard</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-purple-400">Dashboard</p>
             <h2 className="mt-2 text-3xl font-display font-extrabold text-white">Manage links at a glance</h2>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-400">
-              Search by slug or destination URL, filter by status and date, and inspect each short link without leaving the table.
+              Search by slug or destination URL, filter by status and date, and inspect each short link.
             </p>
           </div>
 
@@ -204,7 +210,7 @@ export default function Dashboard({ onSelectLink }: DashboardProps) {
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder="Search by slug or original URL..."
-              className="w-full rounded-2xl border border-soft-500/15 bg-[#09080d] px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-primary-500/40"
+              className="w-full rounded-2xl border border-white/10 bg-[#09080d] px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-purple-500/40"
             />
           </label>
 
@@ -217,7 +223,7 @@ export default function Dashboard({ onSelectLink }: DashboardProps) {
               id="status-filter"
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-              className="w-full rounded-2xl border border-soft-500/15 bg-[#09080d] px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-primary-500/40"
+              className="w-full rounded-2xl border border-white/10 bg-[#09080d] px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-purple-500/40"
             >
               <option value="all">All</option>
               <option value="active">Active</option>
@@ -236,29 +242,29 @@ export default function Dashboard({ onSelectLink }: DashboardProps) {
                 type="date"
                 value={startDate}
                 onChange={(event) => setStartDate(event.target.value)}
-                className="rounded-2xl border border-soft-500/15 bg-[#09080d] px-3 py-3 text-xs text-slate-100 outline-none transition focus:border-primary-500/40"
+                className="rounded-2xl border border-white/10 bg-[#09080d] px-3 py-3 text-xs text-slate-100 outline-none transition focus:border-purple-500/40"
               />
               <input
                 id="end-date-input"
                 type="date"
                 value={endDate}
                 onChange={(event) => setEndDate(event.target.value)}
-                className="rounded-2xl border border-soft-500/15 bg-[#09080d] px-3 py-3 text-xs text-slate-100 outline-none transition focus:border-primary-500/40"
+                className="rounded-2xl border border-white/10 bg-[#09080d] px-3 py-3 text-xs text-slate-100 outline-none transition focus:border-purple-500/40"
               />
             </div>
           </div>
         </div>
 
         {selectedIds.length > 0 ? (
-          <div className="flex items-center justify-between rounded-2xl border border-soft-500/20 bg-primary-950/20 px-4 py-3">
-            <p className="text-sm text-light-200">
+          <div className="flex items-center justify-between rounded-2xl border border-purple-500/20 bg-purple-950/20 px-4 py-3">
+            <p className="text-sm text-slate-200">
               <span className="font-semibold">{selectedIds.length}</span> link{selectedIds.length === 1 ? "" : "s"} selected
             </p>
             <button
               id="bulk-delete-btn"
               type="button"
               onClick={() => setShowConfirmModal(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-950/40 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-950/60"
+              className="inline-flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-950/40 px-4 py-2 text-sm font-semibold text-red-200 transition hover:bg-red-950/60"
             >
               <Trash2 className="h-4 w-4" />
               Delete selected
@@ -270,7 +276,13 @@ export default function Dashboard({ onSelectLink }: DashboardProps) {
           <div className="rounded-[2rem] border border-white/8 bg-white/5 p-16 text-center backdrop-blur-2xl">
             <BarChart3 className="mx-auto h-12 w-12 text-slate-600" />
             <h3 className="mt-4 text-2xl font-display font-bold text-white">No short links found</h3>
-            <p className="mt-2 text-sm text-slate-500">Try a broader search or create your first branded link.</p>
+            <p className="mt-2 text-sm text-slate-500 mb-6">Create your first branded link to see it here.</p>
+            <button
+              onClick={() => window.location.href = "/"}
+              className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold transition-all"
+            >
+              Create New Link
+            </button>
           </div>
         ) : (
           <div id="links-table-container" className="overflow-hidden rounded-[2rem] border border-white/8 bg-white/5 backdrop-blur-2xl">

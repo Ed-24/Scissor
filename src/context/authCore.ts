@@ -249,9 +249,7 @@ function setupConvexMock(client: ConvexReactClient) {
 }
 
 export function isMockMode(): boolean {
-  const isPlaywrightMock = typeof window !== "undefined" && (window as Window & { __PLAYWRIGHT_MOCK__?: boolean }).__PLAYWRIGHT_MOCK__ === true;
-  const isMissingClerkKey = !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-  return isPlaywrightMock || isMissingClerkKey;
+  return typeof window !== "undefined" && (window as Window & { __PLAYWRIGHT_MOCK__?: boolean }).__PLAYWRIGHT_MOCK__ === true;
 }
 
 if (typeof window !== "undefined" && isMockMode()) {
