@@ -3,6 +3,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { useAuthContext } from "../context/useAuthContext";
+import { getAnonymousClientId } from "../context/authCore";
 import { ArrowLeft, Calendar, ExternalLink, Globe, Link2, Smartphone } from "lucide-react";
 import {
   Bar,
@@ -56,7 +57,7 @@ interface AnalyticsResponse {
   countries: CountryPoint[];
 }
 
-const COLORS = ["#215E68", "#297376", "#5C9396", "#C1D9DE", "#16484f", "#0b3137", "#013137"];
+const COLORS = ["#4A4063", "#BFACC8", "#C8C6D7", "#783F8E", "#4F1271", "#5C2570", "#24183A"];
 
 const COUNTRY_NAMES: Record<string, string> = {
   US: "United States",
@@ -77,7 +78,7 @@ function TooltipCard({ active, payload, label }: { active?: boolean; payload?: A
   }
 
   return (
-    <div className="rounded-2xl border border-white/8 bg-[#050407]/95 px-3 py-2 text-xs text-slate-100 shadow-2xl">
+      <div className="rounded-2xl border border-white/8 bg-[#24183a]/95 px-3 py-2 text-xs text-slate-100 shadow-2xl">
       <p className="text-slate-400">{label}</p>
       <p className="mt-1 font-semibold text-light-200">Clicks: {Number(payload[0]?.value ?? 0)}</p>
     </div>
@@ -86,8 +87,9 @@ function TooltipCard({ active, payload, label }: { active?: boolean; payload?: A
 
 export default function AnalyticsDashboard({ linkId, onBack }: AnalyticsDashboardProps) {
   const { isSignedIn } = useAuthContext();
-  const links = useQuery(api.links.listUserLinks, isSignedIn ? {} : "skip") as LinkRow[] | undefined;
-  const analytics = useQuery(api.clicks.getLinkAnalytics, isSignedIn ? { linkId } : "skip") as AnalyticsResponse | undefined;
+  const anonymousClientId = getAnonymousClientId();
+  const links = useQuery(api.links.listUserLinks, { anonymousClientId }) as LinkRow[] | undefined;
+  const analytics = useQuery(api.clicks.getLinkAnalytics, { linkId, anonymousClientId }) as AnalyticsResponse | undefined;
 
   const selectedLink = useMemo(() => links?.find((link) => link._id === linkId), [links, linkId]);
   const shortUrl = selectedLink ? `${window.location.origin}/s/${selectedLink.slug}` : "";
@@ -141,7 +143,7 @@ export default function AnalyticsDashboard({ linkId, onBack }: AnalyticsDashboar
               {selectedLink ? (
                 <div className="mt-3 flex flex-col gap-2 text-sm text-slate-400 sm:flex-row sm:items-center">
                   <span className="font-mono text-light-200">{shortUrl}</span>
-                  <span className="hidden text-slate-600 sm:inline">→</span>
+                  <span className="hidden text-slate-600 sm:inline">-&gt;</span>
                   <a
                     href={selectedLink.originalUrl}
                     target="_blank"
@@ -187,10 +189,10 @@ export default function AnalyticsDashboard({ linkId, onBack }: AnalyticsDashboar
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={clicksOverTime} margin={{ top: 10, right: 8, bottom: 0, left: -20 }}>
                   <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
-                  <XAxis dataKey="date" stroke="#64748b" tickLine={false} fontSize={11} />
-                  <YAxis stroke="#64748b" tickLine={false} allowDecimals={false} fontSize={11} />
+                  <XAxis dataKey="date" stroke="#b8a8ca" tickLine={false} fontSize={11} />
+                  <YAxis stroke="#b8a8ca" tickLine={false} allowDecimals={false} fontSize={11} />
                   <Tooltip content={<TooltipCard />} />
-                  <Line type="monotone" dataKey="count" stroke="#215E68" strokeWidth={3} dot={{ r: 4, fill: "#297376" }} activeDot={{ r: 6 }} />
+                  <Line type="monotone" dataKey="count" stroke="#783f8e" strokeWidth={3} dot={{ r: 4, fill: "#4f1271" }} activeDot={{ r: 6 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -205,8 +207,8 @@ export default function AnalyticsDashboard({ linkId, onBack }: AnalyticsDashboar
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={referrers} margin={{ top: 10, right: 8, bottom: 0, left: -10 }}>
                   <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
-                  <XAxis dataKey="referrer" stroke="#64748b" tickLine={false} fontSize={11} />
-                  <YAxis stroke="#64748b" tickLine={false} allowDecimals={false} fontSize={11} />
+                  <XAxis dataKey="referrer" stroke="#b8a8ca" tickLine={false} fontSize={11} />
+                  <YAxis stroke="#b8a8ca" tickLine={false} allowDecimals={false} fontSize={11} />
                   <Tooltip content={<TooltipCard />} />
                   <Bar dataKey="count" radius={[8, 8, 0, 0]}>
                     {referrers.map((entry, index) => (

@@ -1,14 +1,31 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { Id } from "../../convex/_generated/dataModel";
 import AnalyticsDashboard from "./AnalyticsDashboard";
 import Dashboard from "./Dashboard";
 import QRCodeDisplay from "./QRCodeDisplay";
 import ShortenForm from "./ShortenForm";
 
+type MockApiFunction = {
+  _toApiString?: string;
+  name?: string;
+};
+
+type MutationArgs = {
+  customSlug?: string;
+  [key: string]: unknown;
+};
+
+type QueryArgs = {
+  slug?: string;
+  linkId?: string;
+  [key: string]: unknown;
+} | "skip";
+
 const toastMock = vi.fn();
-const mutationMock = vi.fn(async (args: any) => {
-  if (args && typeof args === "object" && "customSlug" in args) {
+const mutationMock = vi.fn(async (args: MutationArgs = {}) => {
+  if (args && "customSlug" in args) {
     return { slug: args.customSlug || "abc123" };
   }
   return null;
@@ -35,7 +52,7 @@ const mockLinks = [
   },
 ];
 
-const getUdfPath = (apiFunc: any) => String(apiFunc?._toApiString || apiFunc?.name || "");
+const getUdfPath = (apiFunc: MockApiFunction | null | undefined) => String(apiFunc?._toApiString || apiFunc?.name || "");
 
 vi.mock("../context/useAuthContext", () => ({
   useAuthContext: () => ({
@@ -63,16 +80,19 @@ vi.mock("../context/ToastContext", () => ({
 }));
 
 vi.mock("convex/react", () => ({
-  ConvexProvider: ({ children }: any) => children,
+  ConvexProvider: ({ children }: { children: ReactNode }) => children,
   ConvexReactClient: class {
     constructor() {}
   },
   useMutation: () => mutationMock,
-  useQuery: (apiFunc: unknown, args?: any) => {
+  useQuery: (apiFunc: MockApiFunction, args?: QueryArgs) => {
     const path = getUdfPath(apiFunc);
 
     if (path.includes("checkSlugAvailable")) {
-      return args?.slug === "taken-slug" ? false : true;
+      if (args !== "skip" && args && args.slug === "taken-slug") {
+        return false;
+      }
+      return true;
     }
 
     if (path.includes("listUserLinks")) {
@@ -111,8 +131,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   window.URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-url");
   window.URL.revokeObjectURL = vi.fn();
-  mutationMock.mockImplementation(async (args: any) => {
-    if (args && typeof args === "object" && "customSlug" in args) {
+  mutationMock.mockImplementation(async (args: MutationArgs = {}) => {
+    if (args && "customSlug" in args) {
       return { slug: args.customSlug || "abc123" };
     }
     return null;

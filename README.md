@@ -67,12 +67,15 @@ The backend lives in `convex/` and includes:
 - `links.ts` for slug generation, validation, creation, deletion, expiry, and dashboard queries
 - `clicks.ts` for click tracking and analytics aggregation
 - `http.ts` for branded short-link redirects and 404/410 pages
+- `auth.config.ts` for Clerk JWT validation against your Convex deployment
 
 Recommended Convex workflow:
 
 ```bash
 npx convex dev
 ```
+
+If you use Clerk, make sure the Convex deployment has `CLERK_JWT_ISSUER_DOMAIN` set to your Clerk Frontend API URL and that the Clerk integration is enabled for the app instance you are using.
 
 Or deploy directly:
 

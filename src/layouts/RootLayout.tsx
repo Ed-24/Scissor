@@ -1,5 +1,4 @@
-import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { Info, LayoutDashboard, Link2, LogIn, LogOut, Sparkles, User } from "lucide-react";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
 
 export default function RootLayout() {
@@ -15,46 +14,42 @@ export default function RootLayout() {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <div className="min-h-screen bg-[#050407] text-slate-100 flex flex-col font-sans relative">
-      <div className="absolute top-[-10%] left-[20%] w-[500px] h-[500px] rounded-full bg-purple-900/10 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[10%] right-[10%] w-[400px] h-[400px] rounded-full bg-indigo-900/10 blur-[100px] pointer-events-none" />
+    <div className="relative flex min-h-screen flex-col bg-[#c8c6d7] font-sans text-[#3d245d]">
+      <div className="pointer-events-none absolute left-[18%] top-[-8%] h-[28rem] w-[28rem] rounded-full bg-white/35 blur-[110px]" />
+      <div className="pointer-events-none absolute bottom-[10%] right-[8%] h-[22rem] w-[22rem] rounded-full bg-white/25 blur-[100px]" />
 
       {location.pathname !== "/" && (
-        <header className="sticky top-0 z-40 border-b border-purple-500/10 bg-slate-950/70 backdrop-blur-md">
-          <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
-              <div className="p-2 bg-gradient-to-tr from-purple-600 to-indigo-600 rounded-xl shadow-lg shadow-purple-900/20">
-                <Link2 className="w-5 h-5 text-white" />
+        <header className="sticky top-0 z-40 border-b border-[#d8cfee] bg-white/55 backdrop-blur-2xl">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
+            <button className="flex items-center gap-3" onClick={() => navigate("/")}>
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#9f7cc8] bg-[#783f8e] text-sm font-bold text-white shadow-lg shadow-[#783f8e]/20">
+                S
               </div>
-              <h1 className="text-xl font-extrabold tracking-tight font-display text-white flex items-center gap-1.5">
-                Scissor
-                <span className="text-[10px] uppercase bg-purple-500/20 text-purple-300 font-bold px-1.5 py-0.5 rounded border border-purple-500/20">
-                  URL
-                </span>
-              </h1>
-            </div>
+              <div className="text-left">
+                <h1 className="text-xl font-extrabold tracking-tight font-display text-[#3d245d]">Scissor</h1>
+                <p className="text-[10px] uppercase tracking-[0.28em] text-[#7f7396]">URL Shortener</p>
+              </div>
+            </button>
 
-            <nav className="flex items-center gap-1.5 md:gap-3">
+            <nav className="flex items-center gap-2 md:gap-3">
               <button
-                onClick={() => navigate("/")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-                  isActive("/")
-                    ? "bg-purple-600 text-white shadow-lg shadow-purple-900/20"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
+                onClick={() => navigate("/shorten")}
+                className={`rounded-xl px-4 py-2 text-xs font-bold transition-all ${
+                  isActive("/shorten")
+                    ? "bg-[#783f8e] text-white shadow-lg shadow-[#783f8e]/20"
+                    : "border border-[#d8cfee] bg-white/60 text-[#5b4c73] hover:bg-white"
                 }`}
               >
-                <Sparkles className="w-3.5 h-3.5" />
                 Shorten
               </button>
               <button
                 onClick={() => navigate("/dashboard")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                className={`rounded-xl px-4 py-2 text-xs font-bold transition-all ${
                   isActive("/dashboard")
-                    ? "bg-purple-600 text-white shadow-lg shadow-purple-900/20"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
+                    ? "bg-[#783f8e] text-white shadow-lg shadow-[#783f8e]/20"
+                    : "border border-[#d8cfee] bg-white/60 text-[#5b4c73] hover:bg-white"
                 }`}
               >
-                <LayoutDashboard className="w-3.5 h-3.5" />
                 Dashboard
               </button>
             </nav>
@@ -63,26 +58,25 @@ export default function RootLayout() {
               {isSignedIn ? (
                 <div className="flex items-center gap-3">
                   <div className="hidden md:flex flex-col text-right">
-                    <span className="text-xs font-bold text-slate-200">{user?.fullName}</span>
-                    <span className="text-[10px] text-slate-500 font-mono">{user?.primaryEmailAddress}</span>
+                    <span className="text-xs font-bold text-[#3d245d]">{user?.fullName}</span>
+                    <span className="text-[10px] font-mono text-[#7f7396]">{user?.primaryEmailAddress}</span>
                   </div>
-                  <div className="p-1.5 bg-slate-900 border border-slate-800 rounded-full text-purple-400">
-                    <User className="w-4 h-4" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[#d8cfee] bg-white/75 text-[#783f8e]">
+                    {user?.fullName?.[0] ?? "U"}
                   </div>
                   <button
                     onClick={handleSignOut}
-                    className="p-2 hover:bg-red-950/20 border border-transparent hover:border-red-500/20 rounded-xl text-slate-400 hover:text-red-400 transition"
+                    className="rounded-xl border border-[#d8cfee] bg-white/60 px-3 py-2 text-xs font-bold text-[#5b4c73] transition hover:bg-white hover:text-[#3d245d]"
                     title="Sign Out"
                   >
-                    <LogOut className="w-4 h-4" />
+                    Sign Out
                   </button>
                 </div>
               ) : (
                 <button
                   onClick={() => navigate("/sign-in")}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95"
+                  className="rounded-xl border border-[#d8cfee] bg-white/60 px-4 py-2 text-xs font-bold text-[#5b4c73] transition hover:bg-white hover:text-[#3d245d]"
                 >
-                  <LogIn className="w-3.5 h-3.5" />
                   Sign In
                 </button>
               )}
@@ -92,19 +86,16 @@ export default function RootLayout() {
       )}
 
       {isMock && (
-        <div className="bg-purple-950/20 border-b border-purple-500/10 text-center py-2 px-4 text-xs text-purple-300 flex items-center justify-center gap-1.5 animate-in fade-in duration-300">
-          <Info className="w-3.5 h-3.5" />
-          <span>
-            Scissor is running in <strong>Local Demo Mode</strong>. Data stays in your browser until you connect Convex.
-          </span>
+        <div className="border-b border-[#d8cfee] bg-white/55 px-4 py-2 text-center text-xs text-[#5b4c73] backdrop-blur-2xl">
+          Scissor is connected to your local data. Connect Convex to sync with shared backend data.
         </div>
       )}
 
-      <main className="flex-1 flex flex-col justify-start relative z-10 w-full">
+      <main className="relative z-10 flex w-full flex-1 flex-col justify-start">
         <Outlet />
       </main>
 
-      <footer className="py-6 border-t border-purple-500/5 text-center text-xs text-slate-600 bg-slate-950/20">
+      <footer className="border-t border-[#d8cfee] bg-white/45 py-6 text-center text-xs text-[#7f7396]">
         <p>(c) 2026 Scissor Inc. Fast, minimal, and secure branded link shortener.</p>
       </footer>
     </div>

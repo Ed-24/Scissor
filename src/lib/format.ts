@@ -45,7 +45,7 @@ export function truncate(value: string, maxLength = 60): string {
     return value;
   }
 
-  return `${value.slice(0, maxLength - 1)}…`;
+  return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
 export function toLocalDateTimeInputValue(date: Date): string {

@@ -6,6 +6,7 @@ import ToastStack from "./components/ToastStack";
 import ErrorBoundary from "./components/ErrorBoundary";
 import RootLayout from "./layouts/RootLayout";
 import LandingPage from "./pages/LandingPage";
+import ShortenPage from "./pages/ShortenPage";
 import DashboardPage from "./pages/DashboardPage";
 import SignInPage from "./pages/SignIn";
 import SignUpPage from "./pages/SignUp";
@@ -44,7 +45,7 @@ function AuthRedirect({ children }: { children: ReactNode }) {
   if (!isLoaded) return null;
 
   if (isSignedIn) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/shorten" replace />;
   }
 
   return <>{children}</>;
@@ -78,6 +79,7 @@ function MainApp() {
         <Route path="/" element={<RootLayout />}>
           {/* Public Route */}
           <Route index element={<LandingPage />} />
+          <Route path="shorten" element={<ShortenPage />} />
           
           {/* Protected Dashboard Route */}
           <Route

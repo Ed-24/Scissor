@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ClerkProvider,
   useAuth as useClerkAuth,
@@ -9,14 +10,13 @@ import { ConvexProviderWithClerk } from "convex/react-clerk";
 import {
   AuthContext,
   convexClient,
-  isMockMode,
   type AuthUser,
 } from "./authCore";
-import { ConvexProvider } from "convex/react";
 
 function ClerkAuthWrapper({ children }: { children: ReactNode }) {
   const { isLoaded: clerkLoaded, isSignedIn } = useClerkAuth();
   const clerk = useClerk();
+  const navigate = useNavigate();
   const { user: clerkUser } = useClerkUser();
 
   const user: AuthUser | null = clerkUser
@@ -38,8 +38,8 @@ function ClerkAuthWrapper({ children }: { children: ReactNode }) {
         signOut: async () => {
           await clerk.signOut();
         },
-        openSignIn: () => clerk.openSignIn(),
-        openSignUp: () => clerk.openSignUp(),
+        openSignIn: () => navigate("/sign-in"),
+        openSignUp: () => navigate("/sign-up"),
       }}
     >
       {children}
@@ -50,26 +50,6 @@ function ClerkAuthWrapper({ children }: { children: ReactNode }) {
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 export function UnifiedAuthProvider({ children }: { children: ReactNode }) {
-  if (isMockMode()) {
-    return (
-      <ConvexProvider client={convexClient}>
-        <AuthContext.Provider
-          value={{
-            isLoaded: true,
-            isSignedIn: false,
-            isMock: true,
-            user: null,
-            signOut: async () => {},
-            openSignIn: () => {},
-            openSignUp: () => {},
-          }}
-        >
-          {children}
-        </AuthContext.Provider>
-      </ConvexProvider>
-    );
-  }
-
   if (!CLERK_PUBLISHABLE_KEY) {
     return (
       <div className="min-h-screen bg-[#011F23] flex items-center justify-center p-6 text-center">

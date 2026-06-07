@@ -1,52 +1,48 @@
 import { SignIn } from "@clerk/clerk-react";
-import { Link2 } from "lucide-react";
 
 export default function SignInPage() {
   return (
-    <div className="min-h-screen bg-[#011F23] text-slate-100 flex flex-col items-center justify-center p-4 relative overflow-hidden">
-      {/* Background Orbs - Teal/Dark */}
-      <div className="absolute top-[-10%] left-[20%] w-[500px] h-[500px] rounded-full bg-primary-900/10 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[10%] right-[10%] w-[400px] h-[400px] rounded-full bg-soft-900/10 blur-[100px] pointer-events-none" />
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#c8c6d7] p-4 text-[#3d245d]">
+      <div className="pointer-events-none absolute left-[18%] top-[-8%] h-[28rem] w-[28rem] rounded-full bg-white/35 blur-[110px]" />
+      <div className="pointer-events-none absolute bottom-[10%] right-[8%] h-[22rem] w-[22rem] rounded-full bg-white/25 blur-[100px]" />
 
-      {/* Branding */}
-      <div className="mb-8 flex flex-col items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-700">
-        <div className="p-3 bg-gradient-to-tr from-primary-600 to-soft-500 rounded-2xl shadow-xl shadow-primary-950/20">
-          <Link2 className="w-8 h-8 text-white" />
+      <div className="mb-8 flex flex-col items-center gap-2 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#9f7cc8] bg-[#783f8e] text-sm font-bold text-white shadow-lg shadow-[#783f8e]/20">
+          S
         </div>
-        <h1 className="text-3xl font-extrabold tracking-tight font-display text-white flex items-center gap-2">
+        <h1 className="flex items-center gap-2 text-3xl font-extrabold tracking-tight font-display text-[#3d245d]">
           Scissor
-          <span className="text-xs uppercase bg-primary-500/20 text-soft-200 font-bold px-2 py-1 rounded-lg border border-primary-500/20">
+          <span className="rounded-lg border border-[#d8cfee] bg-white/70 px-2 py-1 text-xs uppercase text-[#7f7396]">
             Auth
           </span>
         </h1>
-        <p className="text-slate-400 text-sm font-medium">Welcome back to your workspace</p>
+        <p className="text-sm font-medium text-[#5b4c73]">Welcome back to your workspace</p>
       </div>
 
-      {/* Clerk Component */}
       <div className="w-full max-w-md animate-in fade-in zoom-in-95 duration-500">
         <SignIn
           appearance={{
             elements: {
               rootBox: "mx-auto",
-              card: "bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl rounded-3xl overflow-hidden",
-              headerTitle: "text-white font-display",
-              headerSubtitle: "text-slate-400",
-              socialButtonsBlockButton: "bg-white/5 border-white/10 hover:bg-white/10 text-white transition-all duration-200",
-              socialButtonsBlockButtonText: "text-white font-medium",
-              dividerLine: "bg-white/10",
-              dividerText: "text-slate-500 text-xs uppercase tracking-widest",
-              formFieldLabel: "text-slate-300 text-sm font-semibold mb-1.5",
-              formFieldInput: "bg-white/5 border-white/10 text-white rounded-xl focus:border-primary-500/50 focus:ring-primary-500/20 transition-all",
-              formButtonPrimary: "bg-gradient-to-r from-primary-600 to-soft-500 hover:from-primary-500 hover:to-soft-400 border-none shadow-lg shadow-primary-950/20 text-sm font-bold py-2.5 rounded-xl transition-all active:scale-[0.98]",
-              footerActionLink: "text-soft-300 hover:text-soft-200 font-bold transition-colors",
-              identityPreviewText: "text-white",
-              identityPreviewEditButtonIcon: "text-soft-300",
+              card: "rounded-3xl border border-[#d8cfee] bg-white/65 shadow-2xl shadow-[#b79bdb]/15 backdrop-blur-2xl",
+              headerTitle: "font-display text-[#3d245d]",
+              headerSubtitle: "text-[#5b4c73]",
+              socialButtonsBlockButton: "border border-[#d8cfee] bg-white/70 text-[#3d245d] hover:bg-white transition-all duration-200",
+              socialButtonsBlockButtonText: "text-[#3d245d] font-medium",
+              dividerLine: "bg-[#d8cfee]",
+              dividerText: "text-[#7f7396] text-xs uppercase tracking-widest",
+              formFieldLabel: "mb-1.5 text-sm font-semibold text-[#5b4c73]",
+              formFieldInput: "rounded-xl border border-[#d8cfee] bg-[#f8f5fd] text-[#3d245d] focus:border-[#9b7bc7] focus:ring-[#9b7bc7]/20 transition-all",
+              formButtonPrimary: "rounded-xl border-none bg-[#783f8e] py-2.5 text-sm font-bold text-white shadow-lg shadow-[#783f8e]/20 transition-all hover:bg-[#652f79] active:scale-[0.98]",
+              footerActionLink: "font-bold text-[#783f8e] transition-colors hover:text-[#652f79]",
+              identityPreviewText: "text-[#3d245d]",
+              identityPreviewEditButtonIcon: "text-[#7f7396]",
             },
           }}
           routing="path"
           path="/sign-in"
           signUpUrl="/sign-up"
-          afterSignInUrl="/dashboard"
+          afterSignInUrl="/shorten"
         />
       </div>
     </div>
