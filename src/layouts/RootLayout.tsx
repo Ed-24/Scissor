@@ -22,9 +22,7 @@ export default function RootLayout() {
         <header className="sticky top-0 z-40 border-b border-[#d8cfee] bg-white/55 backdrop-blur-2xl">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
             <button className="flex items-center gap-3" onClick={() => navigate("/")}>
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#9f7cc8] bg-[#783f8e] text-sm font-bold text-white shadow-lg shadow-[#783f8e]/20">
-                S
-              </div>
+
               <div className="text-left">
                 <h1 className="text-xl font-extrabold tracking-tight font-display text-[#3d245d]">Scissor</h1>
                 <p className="text-[10px] uppercase tracking-[0.28em] text-[#7f7396]">URL Shortener</p>

@@ -7,14 +7,9 @@ export default function SignUpPage() {
       <div className="pointer-events-none absolute bottom-[10%] right-[8%] h-[22rem] w-[22rem] rounded-full bg-white/25 blur-[100px]" />
 
       <div className="mb-8 flex flex-col items-center gap-2 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#9f7cc8] bg-[#783f8e] text-sm font-bold text-white shadow-lg shadow-[#783f8e]/20">
-          S
-        </div>
+        
         <h1 className="flex items-center gap-2 text-3xl font-extrabold tracking-tight font-display text-[#3d245d]">
           Scissor
-          <span className="rounded-lg border border-[#d8cfee] bg-white/70 px-2 py-1 text-xs uppercase text-[#7f7396]">
-            Join
-          </span>
         </h1>
         <p className="text-sm font-medium text-[#5b4c73]">Create your professional short links</p>
       </div>
