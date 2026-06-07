@@ -49,6 +49,7 @@ npm install
 ```bash
 VITE_CONVEX_URL=https://your-convex-deployment.convex.cloud
 VITE_CLERK_PUBLISHABLE_KEY=pk_test_your_clerk_key
+VITE_SHORT_URL_BASE=https://your-short-domain.com
 ```
 
 3. Start the frontend:
@@ -114,6 +115,7 @@ Scissor is structured to support a dedicated short domain such as `scissor.link`
 - Point the short domain to the redirect endpoint
 - Keep the app shell on your primary app domain
 - Use the Convex HTTP action route for `302` redirects
+- Set `VITE_SHORT_URL_BASE` so the UI displays your branded short domain instead of the local Vite origin
 
 ## Testing
 

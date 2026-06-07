@@ -5,6 +5,7 @@ import { api } from "../../convex/_generated/api";
 import { useToast } from "../context/ToastContext";
 import { useAuthContext } from "../context/useAuthContext";
 import { getAnonymousClientId } from "../context/authCore";
+import { buildShortUrl, getShortUrlBase } from "../lib/shortUrl";
 import QRCodeDisplay from "./QRCodeDisplay";
 
 const PHISHING_BLOCKLIST = [
@@ -170,7 +171,7 @@ export default function ShortenForm() {
         anonymousClientId: getAnonymousClientId(),
       });
 
-      const shortUrl = `${window.location.origin}/s/${result.slug}`;
+      const shortUrl = buildShortUrl(result.slug);
       setSuccessData({ shortUrl, slug: result.slug });
       setOriginalUrl("");
       setCustomSlug("");
@@ -337,7 +338,7 @@ export default function ShortenForm() {
             {useCustomSlug ? (
               <div className="rounded-2xl border border-[#d8cfee] bg-[#f8f5fd] p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <span className="font-mono text-sm text-[#7f7396]">{window.location.origin}/s/</span>
+                  <span className="font-mono text-sm text-[#7f7396]">{getShortUrlBase()}/s/</span>
                   <input
                     id="custom-slug-input"
                     type="text"

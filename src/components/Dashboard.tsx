@@ -5,6 +5,7 @@ import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { useAuthContext } from "../context/useAuthContext";
 import { useToast } from "../context/ToastContext";
 import { getAnonymousClientId } from "../context/authCore";
+import { buildShortUrl } from "../lib/shortUrl";
 import QRCodeDisplay from "./QRCodeDisplay";
 import { BarChart3, Calendar, Check, Copy, Filter, QrCode, Search, ShieldAlert, Trash } from "lucide-react";
 import { formatShortDate, formatRelativeDate, truncate } from "../lib/format";
@@ -65,7 +66,6 @@ export default function Dashboard({ onSelectLink }: DashboardProps) {
     return filteredLinks.find((link) => link._id === expandedQrId) ?? filteredLinks[0];
   }, [filteredLinks, expandedQrId]);
 
-  const host = window.location.origin;
   const totalClicks = filteredLinks.reduce((sum, link) => sum + (link.clickCount ?? 0), 0);
   const activeLinks = filteredLinks.filter((link) => link.status !== "expired" && (!link.expiresAt || link.expiresAt > now)).length;
   const expiredLinks = filteredLinks.length - activeLinks;
@@ -284,7 +284,7 @@ export default function Dashboard({ onSelectLink }: DashboardProps) {
 
           <div className="mt-5">
             {previewLink ? (
-              <QRCodeDisplay shortUrl={`${host}/s/${previewLink.slug}`} slug={previewLink.slug} />
+              <QRCodeDisplay shortUrl={buildShortUrl(previewLink.slug)} slug={previewLink.slug} />
             ) : (
               <div className="rounded-[2rem] border border-[#d8cfee] bg-[#f8f5fd] p-8 text-center">
                 <p className="text-sm text-[#5b4c73]">Create a link first to generate a QR preview here.</p>
@@ -346,7 +346,7 @@ export default function Dashboard({ onSelectLink }: DashboardProps) {
                 </thead>
                 <tbody className="divide-y divide-white/8">
                   {filteredLinks.map((link) => {
-                    const shortUrl = `${host}/s/${link.slug}`;
+                    const shortUrl = buildShortUrl(link.slug);
                     const isSelected = selectedIds.includes(link._id);
                     const isExpired = link.status === "expired" || (link.expiresAt ? link.expiresAt <= now : false);
 
